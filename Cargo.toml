@@ -1,0 +1,31 @@
+[package]
+name = "pq"
+version = "0.1.0"
+edition = "2021"
+description = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
+license = "MIT"
+repository = "https://github.com/example/pq"
+keywords = ["parquet", "cli", "data", "arrow"]
+categories = ["command-line-utilities", "data-structures"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+parquet = "53"
+arrow = { version = "53", features = ["prettyprint"] }
+datafusion = "43"
+comfy-table = "7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+glob = "0.3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
