@@ -1,1 +1,4 @@
 /target
+/stress/fixtures/
+/tests/stress/fixtures/
+fuzz/target/

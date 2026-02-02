@@ -1,5 +1,6 @@
 //! Head and tail commands
 
+use crate::error::{PqError, ResultExt};
 use crate::output::{csv, json, table};
 use crate::OutputFormat;
 use anyhow::Result;
@@ -14,15 +15,27 @@ pub fn run(paths: &[PathBuf], n: usize, output: OutputFormat, quiet: bool) -> Re
             println!("==> {} <==", path.display());
         }
 
-        let file = File::open(path)?;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
-        let reader = builder.with_batch_size(n.min(1024)).build()?;
+        let file = File::open(path).with_path_context(path)?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("magic") || msg.contains("not a valid parquet") {
+                PqError::invalid_parquet(path, &e)
+            } else if msg.contains("eof") || msg.contains("truncat") {
+                PqError::corrupted(path, &e)
+            } else {
+                PqError::read_error(path, &e)
+            }
+        })?;
+        let reader = builder
+            .with_batch_size(n.min(1024))
+            .build()
+            .map_err(|e| PqError::read_error(path, &e))?;
 
         let mut batches = Vec::new();
         let mut total_rows = 0;
 
         for batch_result in reader {
-            let batch = batch_result?;
+            let batch = batch_result.map_err(|e| PqError::corrupted(path, &e))?;
             let rows_needed = n.saturating_sub(total_rows);
             if rows_needed == 0 {
                 break;
@@ -49,12 +62,23 @@ pub fn run_tail(paths: &[PathBuf], n: usize, output: OutputFormat, quiet: bool) 
             println!("==> {} <==", path.display());
         }
 
-        let file = File::open(path)?;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
-        let reader = builder.build()?;
+        let file = File::open(path).with_path_context(path)?;
+        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("magic") || msg.contains("not a valid parquet") {
+                PqError::invalid_parquet(path, &e)
+            } else if msg.contains("eof") || msg.contains("truncat") {
+                PqError::corrupted(path, &e)
+            } else {
+                PqError::read_error(path, &e)
+            }
+        })?;
+        let reader = builder.build().map_err(|e| PqError::read_error(path, &e))?;
 
         // Collect all batches first (for tail we need to read to the end)
-        let all_batches: Vec<RecordBatch> = reader.collect::<Result<Vec<_>, _>>()?;
+        let all_batches: Vec<RecordBatch> = reader
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| PqError::corrupted(path, &e))?;
 
         // Calculate total rows and slice from the end
         let total_rows: usize = all_batches.iter().map(RecordBatch::num_rows).sum();

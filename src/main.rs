@@ -1,6 +1,7 @@
 //! pq - A jq-like CLI for Parquet files
 
 mod commands;
+mod error;
 mod output;
 mod utils;
 
@@ -143,8 +144,28 @@ pub enum OutputFormat {
     Csv,
 }
 
+fn main() {
+    if let Err(err) = run() {
+        // Print user-friendly error message
+        eprintln!("error: {err}");
+
+        // Print cause chain without internal details
+        let mut source = err.source();
+        while let Some(cause) = source {
+            // Skip internal library error types that aren't helpful
+            let msg = cause.to_string();
+            if !msg.contains("ArrowError") && !msg.contains("ParquetError") {
+                eprintln!("  caused by: {msg}");
+            }
+            source = cause.source();
+        }
+
+        std::process::exit(1);
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {

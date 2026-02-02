@@ -1,5 +1,6 @@
 //! File metadata command
 
+use crate::error::{PqError, ResultExt};
 use crate::output::table;
 use crate::OutputFormat;
 use anyhow::Result;
@@ -28,9 +29,18 @@ pub fn run(paths: &[PathBuf], output: OutputFormat, quiet: bool) -> Result<()> {
             println!("==> {} <==", path.display());
         }
 
-        let file = File::open(path)?;
-        let file_size = fs::metadata(path)?.len();
-        let reader = SerializedFileReader::new(file)?;
+        let file = File::open(path).with_path_context(path)?;
+        let file_size = fs::metadata(path).with_path_context(path)?.len();
+        let reader = SerializedFileReader::new(file).map_err(|e| {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("magic") || msg.contains("not a valid parquet") {
+                PqError::invalid_parquet(path, &e)
+            } else if msg.contains("eof") || msg.contains("truncat") {
+                PqError::corrupted(path, &e)
+            } else {
+                PqError::read_error(path, &e)
+            }
+        })?;
         let metadata = reader.metadata();
         let file_meta = metadata.file_metadata();
 

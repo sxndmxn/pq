@@ -1,5 +1,6 @@
 //! SQL query command using `DataFusion`
 
+use crate::error::PqError;
 use crate::output::{csv, json, table};
 use crate::OutputFormat;
 use anyhow::Result;
@@ -18,7 +19,17 @@ pub async fn run(paths: &[PathBuf], sql: &str, output: OutputFormat, quiet: bool
             paths[0].to_string_lossy().as_ref(),
             ParquetReadOptions::default(),
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("not found") || msg.contains("no such file") {
+                PqError::file_not_found(&paths[0])
+            } else if msg.contains("parquet") || msg.contains("magic") {
+                PqError::invalid_parquet(&paths[0], &e)
+            } else {
+                PqError::read_error(&paths[0], &e)
+            }
+        })?;
     } else {
         for path in paths {
             let table_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("tbl");
@@ -27,13 +38,23 @@ pub async fn run(paths: &[PathBuf], sql: &str, output: OutputFormat, quiet: bool
                 path.to_string_lossy().as_ref(),
                 ParquetReadOptions::default(),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("not found") || msg.contains("no such file") {
+                    PqError::file_not_found(path)
+                } else if msg.contains("parquet") || msg.contains("magic") {
+                    PqError::invalid_parquet(path, &e)
+                } else {
+                    PqError::read_error(path, &e)
+                }
+            })?;
         }
     }
 
     // Execute the SQL query
-    let df = ctx.sql(sql).await?;
-    let batches = df.collect().await?;
+    let df = ctx.sql(sql).await.map_err(|e| PqError::invalid_sql(&e))?;
+    let batches = df.collect().await.map_err(|e| PqError::query_failed(&e))?;
 
     // Output the results
     match output {
