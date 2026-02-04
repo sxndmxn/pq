@@ -1,7 +1,8 @@
 //! Format conversion command
 
+use crate::error::{PqError, ResultExt};
 use crate::output::csv as csv_output;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::{Map, Value};
@@ -20,15 +21,40 @@ pub fn run(input: &Path, output: &Path) -> Result<()> {
         Some("csv") => OutputType::Csv,
         Some("json") => OutputType::Json,
         Some("jsonl") => OutputType::Jsonl,
-        Some(ext) => bail!("Unsupported output format: {ext}. Use .csv, .json, or .jsonl"),
-        None => bail!("Output file must have an extension (.csv, .json, or .jsonl)"),
+        Some(ext) => {
+            return Err(PqError::UnsupportedFormat {
+                format: ext.to_string(),
+                supported: "csv, json, jsonl".to_string(),
+            }
+            .into())
+        }
+        None => {
+            return Err(PqError::UnsupportedFormat {
+                format: "(no extension)".to_string(),
+                supported: "csv, json, jsonl".to_string(),
+            }
+            .into())
+        }
     };
 
     // Read parquet file
-    let file = File::open(input)?;
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
-    let reader = builder.build()?;
-    let batches: Vec<RecordBatch> = reader.collect::<Result<Vec<_>, _>>()?;
+    let file = File::open(input).with_path_context(input)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
+        let msg = e.to_string().to_lowercase();
+        if msg.contains("magic") || msg.contains("not a valid parquet") {
+            PqError::invalid_parquet(input, &e)
+        } else if msg.contains("eof") || msg.contains("truncat") {
+            PqError::corrupted(input, &e)
+        } else {
+            PqError::read_error(input, &e)
+        }
+    })?;
+    let reader = builder
+        .build()
+        .map_err(|e| PqError::read_error(input, &e))?;
+    let batches: Vec<RecordBatch> = reader
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PqError::corrupted(input, &e))?;
 
     // Write output
     match format {
@@ -86,7 +112,7 @@ fn batch_to_json_rows(batch: &RecordBatch) -> Result<Vec<Map<String, Value>>> {
 }
 
 fn write_json(batches: &[RecordBatch], path: &Path) -> Result<()> {
-    let file = File::create(path)?;
+    let file = File::create(path).map_err(|e| PqError::write_error(path, &e))?;
     let mut writer = BufWriter::new(file);
 
     let mut all_rows = Vec::new();
@@ -94,22 +120,23 @@ fn write_json(batches: &[RecordBatch], path: &Path) -> Result<()> {
         all_rows.extend(batch_to_json_rows(batch)?);
     }
 
-    serde_json::to_writer_pretty(&mut writer, &all_rows)?;
-    writer.flush()?;
+    serde_json::to_writer_pretty(&mut writer, &all_rows)
+        .map_err(|e| PqError::write_error(path, &e))?;
+    writer.flush().map_err(|e| PqError::write_error(path, &e))?;
     Ok(())
 }
 
 fn write_jsonl(batches: &[RecordBatch], path: &Path) -> Result<()> {
-    let file = File::create(path)?;
+    let file = File::create(path).map_err(|e| PqError::write_error(path, &e))?;
     let mut writer = BufWriter::new(file);
 
     for batch in batches {
         for row in batch_to_json_rows(batch)? {
-            serde_json::to_writer(&mut writer, &row)?;
-            writeln!(writer)?;
+            serde_json::to_writer(&mut writer, &row).map_err(|e| PqError::write_error(path, &e))?;
+            writeln!(writer).map_err(|e| PqError::write_error(path, &e))?;
         }
     }
 
-    writer.flush()?;
+    writer.flush().map_err(|e| PqError::write_error(path, &e))?;
     Ok(())
 }

@@ -18,7 +18,17 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+thiserror = "2"
 glob = "0.3"
+rand = "0.8"
+
+[[bin]]
+name = "pq"
+path = "src/main.rs"
+
+[[bin]]
+name = "pq-generate"
+path = "src/bin/pq-generate.rs"
 
 [lints.rust]
 unsafe_code = "forbid"

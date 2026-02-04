@@ -1,5 +1,6 @@
 //! Schema display command
 
+use crate::error::{PqError, ResultExt};
 use crate::output::{csv, json, table};
 use crate::OutputFormat;
 use anyhow::Result;
@@ -13,8 +14,18 @@ pub fn run(paths: &[PathBuf], output: OutputFormat, quiet: bool) -> Result<()> {
             println!("==> {} <==", path.display());
         }
 
-        let file = File::open(path)?;
-        let reader = SerializedFileReader::new(file)?;
+        let file = File::open(path).with_path_context(path)?;
+        let reader = SerializedFileReader::new(file).map_err(|e| {
+            // Check for common parquet validation errors
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("magic") || msg.contains("not a valid parquet") {
+                PqError::invalid_parquet(path, &e)
+            } else if msg.contains("eof") || msg.contains("truncat") {
+                PqError::corrupted(path, &e)
+            } else {
+                PqError::read_error(path, &e)
+            }
+        })?;
         let schema = reader.metadata().file_metadata().schema_descr();
 
         // Extract column info: (name, type_string, nullable)

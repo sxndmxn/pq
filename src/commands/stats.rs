@@ -1,5 +1,6 @@
 //! Column statistics command
 
+use crate::error::{PqError, ResultExt};
 use crate::OutputFormat;
 use anyhow::Result;
 use comfy_table::{Cell, Table};
@@ -40,8 +41,17 @@ pub fn run(
             println!("==> {} <==", path.display());
         }
 
-        let file = File::open(path)?;
-        let reader = SerializedFileReader::new(file)?;
+        let file = File::open(path).with_path_context(path)?;
+        let reader = SerializedFileReader::new(file).map_err(|e| {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("magic") || msg.contains("not a valid parquet") {
+                PqError::invalid_parquet(path, &e)
+            } else if msg.contains("eof") || msg.contains("truncat") {
+                PqError::corrupted(path, &e)
+            } else {
+                PqError::read_error(path, &e)
+            }
+        })?;
         let metadata = reader.metadata();
         let schema = metadata.file_metadata().schema_descr();
 
