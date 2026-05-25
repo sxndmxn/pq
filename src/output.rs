@@ -10,13 +10,13 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 
-pub mod csv;
-pub(crate) mod csv_support;
-pub mod info;
-pub mod json;
-pub mod schema;
-pub mod stats;
-pub mod table;
+mod csv;
+mod csv_support;
+mod info;
+mod json;
+mod schema;
+mod stats;
+mod table;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum OutputFormat {

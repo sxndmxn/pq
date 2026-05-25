@@ -7,12 +7,7 @@ const MAX_GLOB_FILES: usize = 10_000;
 
 #[derive(Clone, Debug)]
 pub struct Dataset {
-    sources: Vec<DatasetSource>,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct DatasetSource {
-    path: PathBuf,
+    paths: Vec<PathBuf>,
 }
 
 impl Dataset {
@@ -21,44 +16,38 @@ impl Dataset {
             return Err(PqError::NoInputFiles.into());
         }
 
-        let mut sources = Vec::new();
+        let mut paths = Vec::new();
         let mut seen_glob_paths = BTreeSet::new();
 
         for input in inputs {
             if is_glob_pattern(&input) {
-                expand_glob_input(&input, &mut sources, &mut seen_glob_paths)?;
+                expand_glob_input(&input, &mut paths, &mut seen_glob_paths)?;
             } else {
                 validate_file_path(&input)?;
                 seen_glob_paths.insert(input.clone());
-                sources.push(DatasetSource { path: input });
+                paths.push(input);
             }
         }
 
-        if sources.is_empty() {
+        if paths.is_empty() {
             return Err(PqError::NoInputFiles.into());
         }
 
-        Ok(Self { sources })
+        Ok(Self { paths })
     }
 
     pub fn paths(&self) -> impl ExactSizeIterator<Item = &Path> {
-        self.sources.iter().map(DatasetSource::path)
+        self.paths.iter().map(PathBuf::as_path)
     }
 
     pub fn is_multi_source(&self) -> bool {
-        self.sources.len() > 1
-    }
-}
-
-impl DatasetSource {
-    fn path(&self) -> &Path {
-        &self.path
+        self.paths.len() > 1
     }
 }
 
 fn expand_glob_input(
     input: &Path,
-    sources: &mut Vec<DatasetSource>,
+    paths: &mut Vec<PathBuf>,
     seen_glob_paths: &mut BTreeSet<PathBuf>,
 ) -> Result<()> {
     let pattern = input.to_string_lossy().into_owned();
@@ -67,7 +56,7 @@ fn expand_glob_input(
     for entry in glob::glob(&pattern)? {
         let path = entry?;
         validate_file_path(&path)?;
-        matches.push(DatasetSource { path });
+        matches.push(path);
 
         if matches.len() > MAX_GLOB_FILES {
             return Err(PqError::TooManyFilesMatched {
@@ -83,9 +72,9 @@ fn expand_glob_input(
     }
 
     matches.sort();
-    for source in matches {
-        if seen_glob_paths.insert(source.path.clone()) {
-            sources.push(source);
+    for path in matches {
+        if seen_glob_paths.insert(path.clone()) {
+            paths.push(path);
         }
     }
     Ok(())
