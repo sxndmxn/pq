@@ -106,10 +106,7 @@ pub fn stats(dataset: &Dataset, column_name: Option<&str>) -> Result<Vec<StatsRe
 }
 
 pub fn info(dataset: &Dataset) -> Result<Vec<FileInfo>> {
-    dataset
-        .paths()
-        .map(engine::parquet::file_info)
-        .collect()
+    dataset.paths().map(engine::parquet::file_info).collect()
 }
 
 pub fn convert(input: &Path, output: &Path) -> Result<()> {

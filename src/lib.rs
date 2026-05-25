@@ -8,11 +8,11 @@ pub mod model;
 mod output;
 
 pub use anyhow::Result;
-use clap::Parser;
 pub use api::{
     count, dataset_from_inputs, info, merge, scan, schema, stats, CountEntry, CountResult,
     ScanKind, ScanOptions, ScanResult, SchemaResult, StatsResult,
 };
+use clap::Parser;
 pub use dataset::Dataset;
 pub use error::PqError;
 pub use model::{
