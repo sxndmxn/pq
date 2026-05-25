@@ -11,7 +11,7 @@ pub struct Dataset {
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct DatasetSource {
+struct DatasetSource {
     path: PathBuf,
 }
 
@@ -41,14 +41,8 @@ impl Dataset {
         Ok(Self { sources })
     }
 
-    pub fn from_source(source: DatasetSource) -> Self {
-        Self {
-            sources: vec![source],
-        }
-    }
-
-    pub fn sources(&self) -> &[DatasetSource] {
-        &self.sources
+    pub fn paths(&self) -> impl ExactSizeIterator<Item = &Path> {
+        self.sources.iter().map(DatasetSource::path)
     }
 
     pub fn is_multi_source(&self) -> bool {
@@ -57,7 +51,7 @@ impl Dataset {
 }
 
 impl DatasetSource {
-    pub fn path(&self) -> &Path {
+    fn path(&self) -> &Path {
         &self.path
     }
 }
@@ -142,9 +136,9 @@ mod tests {
         let glob = dir.join("*.parquet");
 
         let dataset = Dataset::from_inputs(vec![file.clone(), glob])?;
+        let paths = dataset.paths().collect::<Vec<_>>();
 
-        assert_eq!(dataset.sources().len(), 1);
-        assert_eq!(dataset.sources()[0].path(), file.as_path());
+        assert_eq!(paths, vec![file.as_path()]);
 
         fs::remove_file(file)?;
         fs::remove_dir(dir)?;

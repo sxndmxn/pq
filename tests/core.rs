@@ -41,8 +41,10 @@ fn write_parquet(
 }
 
 #[test]
-fn file_info_comes_from_shared_engine() -> Result<()> {
-    let info = pq::engine::parquet::file_info(&fixture_path())?;
+fn file_info_comes_from_public_api() -> Result<()> {
+    let dataset = pq::dataset_from_inputs(vec![fixture_path()])?;
+    let infos = pq::info(&dataset)?;
+    let info = &infos[0];
 
     assert_eq!(info.num_rows, 5);
     assert_eq!(info.num_columns, 4);
@@ -57,8 +59,10 @@ fn file_info_comes_from_shared_engine() -> Result<()> {
 }
 
 #[test]
-fn column_stats_come_from_shared_engine() -> Result<()> {
-    let rows = pq::engine::stats::column_stats(&fixture_path(), Some("id"))?;
+fn column_stats_come_from_public_api() -> Result<()> {
+    let dataset = pq::dataset_from_inputs(vec![fixture_path()])?;
+    let results = pq::stats(&dataset, Some("id"))?;
+    let rows = &results[0].rows;
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].column, "id");
@@ -90,7 +94,7 @@ fn library_api_exposes_typed_schema_results() -> Result<()> {
 }
 
 #[test]
-fn merge_comes_from_shared_engine() -> Result<()> {
+fn merge_comes_from_public_api() -> Result<()> {
     let schema = Arc::new(Schema::new(vec![Field::new(
         "value",
         DataType::Int64,
@@ -107,10 +111,12 @@ fn merge_comes_from_shared_engine() -> Result<()> {
     write_parquet(&left, Arc::clone(&schema), std::slice::from_ref(&batch))?;
     write_parquet(&right, schema, &[batch])?;
 
-    pq::engine::parquet::merge_files(&[left.as_path(), right.as_path()], &output)?;
+    let merge_dataset = pq::dataset_from_inputs(vec![left.clone(), right.clone()])?;
+    pq::merge(&merge_dataset, &output)?;
 
-    let count = pq::engine::parquet::row_count(&output)?;
-    assert_eq!(count, 4);
+    let output_dataset = pq::dataset_from_inputs(vec![output.clone()])?;
+    let count = pq::count(&output_dataset)?;
+    assert_eq!(count.total_rows, 4);
 
     fs::remove_file(left)?;
     fs::remove_file(right)?;

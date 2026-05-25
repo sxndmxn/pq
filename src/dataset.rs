@@ -1,3 +1,3 @@
 pub mod source;
 
-pub use source::{Dataset, DatasetSource};
+pub use source::Dataset;

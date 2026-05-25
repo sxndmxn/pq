@@ -1,5 +1,4 @@
-use clap::Parser;
-use pq::{Cli, PqError, Result};
+use pq::{PqError, Result};
 
 fn main() {
     if let Err(err) = run() {
@@ -17,6 +16,5 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let cli = Cli::parse();
-    pq::run(cli.command)
+    pq::run_cli()
 }
