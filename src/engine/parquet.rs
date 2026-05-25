@@ -1,17 +1,11 @@
 use crate::error::{PqError, ResultExt};
+use crate::model::{ColumnInfo, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::fs::{self, File};
 use std::path::Path;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ColumnInfo {
-    pub name: String,
-    pub type_name: String,
-    pub nullable: bool,
-}
 
 pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let builder = reader_builder(path)?;
@@ -98,13 +92,52 @@ pub fn file_size(path: &Path) -> Result<u64> {
     Ok(fs::metadata(path).with_path_context(path)?.len())
 }
 
-fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
+pub fn file_info(path: &Path) -> Result<FileInfo> {
+    let reader = serialized_reader(path)?;
+    let metadata = reader.metadata();
+    let file_metadata = metadata.file_metadata();
+    let num_row_groups = metadata.num_row_groups();
+
+    let compression = if num_row_groups > 0 {
+        let row_group = metadata.row_group(0);
+        if row_group.num_columns() > 0 {
+            format!("{:?}", row_group.column(0).compression())
+        } else {
+            "N/A".to_string()
+        }
+    } else {
+        "N/A".to_string()
+    };
+
+    Ok(FileInfo {
+        file: path.display().to_string(),
+        file_size_bytes: file_size(path)?,
+        num_rows: file_metadata.num_rows(),
+        num_columns: file_metadata.schema_descr().num_columns(),
+        num_row_groups,
+        compression,
+        created_by: file_metadata.created_by().unwrap_or("unknown").to_string(),
+        version: file_metadata.version(),
+    })
+}
+
+pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>> {
+    let reader = reader_builder(path)?
+        .build()
+        .map_err(|error| PqError::read_error(path, &error))?;
+
+    reader
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|error| PqError::corrupted(path, &error).into())
+}
+
+pub fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
     Ok(ParquetRecordBatchReaderBuilder::try_new(file)
         .map_err(|error| map_parquet_error(path, error))?)
 }
 
-fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
+pub fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
     let file = File::open(path).with_path_context(path)?;
     Ok(SerializedFileReader::new(file).map_err(|error| map_parquet_error(path, error))?)
 }

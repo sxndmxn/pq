@@ -2,11 +2,10 @@
 
 use crate::cli::args::MergeArgs;
 use crate::dataset::Dataset;
-use crate::error::{PqError, ResultExt};
+use crate::error::PqError;
 use crate::Result;
 use anyhow::bail;
 use arrow::array::RecordBatch;
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
@@ -30,17 +29,7 @@ fn run_with_paths(paths: &[PathBuf], output: &Path) -> Result<()> {
     }
 
     // Read schema from first file
-    let first_file = File::open(&paths[0]).with_path_context(&paths[0])?;
-    let first_builder = ParquetRecordBatchReaderBuilder::try_new(first_file).map_err(|e| {
-        let msg = e.to_string().to_lowercase();
-        if msg.contains("magic") || msg.contains("not a valid parquet") {
-            PqError::invalid_parquet(&paths[0], &e)
-        } else if msg.contains("eof") || msg.contains("truncat") {
-            PqError::corrupted(&paths[0], &e)
-        } else {
-            PqError::read_error(&paths[0], &e)
-        }
-    })?;
+    let first_builder = crate::engine::parquet::reader_builder(&paths[0])?;
     let schema = Arc::clone(first_builder.schema());
 
     // Create output file with writer
@@ -53,17 +42,7 @@ fn run_with_paths(paths: &[PathBuf], output: &Path) -> Result<()> {
 
     // Process each input file
     for path in paths {
-        let file = File::open(path).with_path_context(path)?;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
-            let msg = e.to_string().to_lowercase();
-            if msg.contains("magic") || msg.contains("not a valid parquet") {
-                PqError::invalid_parquet(path, &e)
-            } else if msg.contains("eof") || msg.contains("truncat") {
-                PqError::corrupted(path, &e)
-            } else {
-                PqError::read_error(path, &e)
-            }
-        })?;
+        let builder = crate::engine::parquet::reader_builder(path)?;
 
         // Verify schema compatibility
         if builder.schema().as_ref() != schema.as_ref() {

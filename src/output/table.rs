@@ -1,6 +1,6 @@
 //! Pretty table formatting using comfy-table
 
-use crate::engine::parquet::ColumnInfo;
+use crate::model::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use comfy_table::{Cell, Table};

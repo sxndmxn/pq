@@ -2,12 +2,10 @@
 
 use crate::cli::args::ConvertArgs;
 use crate::dataset::Dataset;
-use crate::error::{PqError, ResultExt};
+use crate::error::PqError;
 use crate::output::csv as csv_output;
 use crate::output::json as json_output;
 use crate::Result;
-use arrow::array::RecordBatch;
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
@@ -43,24 +41,7 @@ pub fn run(args: ConvertArgs) -> Result<()> {
         }
     };
 
-    // Read parquet file
-    let file = File::open(input).with_path_context(input)?;
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
-        let msg = e.to_string().to_lowercase();
-        if msg.contains("magic") || msg.contains("not a valid parquet") {
-            PqError::invalid_parquet(input, &e)
-        } else if msg.contains("eof") || msg.contains("truncat") {
-            PqError::corrupted(input, &e)
-        } else {
-            PqError::read_error(input, &e)
-        }
-    })?;
-    let reader = builder
-        .build()
-        .map_err(|e| PqError::read_error(input, &e))?;
-    let batches: Vec<RecordBatch> = reader
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| PqError::corrupted(input, &e))?;
+    let batches = crate::engine::parquet::read_batches(input)?;
 
     // Write output
     match format {
