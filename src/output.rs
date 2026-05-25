@@ -158,11 +158,9 @@ mod tests {
     #[test]
     fn rejects_unknown_output_extension() {
         let path = Path::new("/tmp/output.unknown");
-        let result = file_output_format(path);
-        assert!(result.is_err());
-        assert!(result
-            .as_ref()
-            .err()
-            .is_some_and(|err| err.to_string().contains("Unsupported format")));
+        assert!(matches!(
+            file_output_format(path),
+            Err(ref err) if err.to_string().contains("Unsupported format")
+        ));
     }
 }
