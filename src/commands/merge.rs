@@ -2,70 +2,14 @@
 
 use crate::cli::args::MergeArgs;
 use crate::dataset::Dataset;
-use crate::error::PqError;
 use crate::Result;
-use anyhow::bail;
-use arrow::array::RecordBatch;
-use parquet::arrow::ArrowWriter;
-use parquet::basic::Compression;
-use parquet::file::properties::WriterProperties;
-use std::fs::File;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 pub fn run(args: MergeArgs) -> Result<()> {
     let dataset = Dataset::from_inputs(args.inputs)?;
-    let paths: Vec<PathBuf> = dataset
+    let paths: Vec<_> = dataset
         .sources()
         .iter()
-        .map(|source| source.path().to_path_buf())
+        .map(|source| source.path())
         .collect();
-    run_with_paths(&paths, &args.output)
-}
-
-fn run_with_paths(paths: &[PathBuf], output: &Path) -> Result<()> {
-    if paths.is_empty() {
-        bail!("No input files specified");
-    }
-
-    // Read schema from first file
-    let first_builder = crate::engine::parquet::reader_builder(&paths[0])?;
-    let schema = Arc::clone(first_builder.schema());
-
-    // Create output file with writer
-    let output_file = File::create(output).map_err(|e| PqError::write_error(output, &e))?;
-    let props = WriterProperties::builder()
-        .set_compression(Compression::SNAPPY)
-        .build();
-    let mut writer = ArrowWriter::try_new(output_file, Arc::clone(&schema), Some(props))
-        .map_err(|e| PqError::write_error(output, &e))?;
-
-    // Process each input file
-    for path in paths {
-        let builder = crate::engine::parquet::reader_builder(path)?;
-
-        // Verify schema compatibility
-        if builder.schema().as_ref() != schema.as_ref() {
-            return Err(PqError::SchemaMismatch {
-                file1: paths[0].display().to_string(),
-                file2: path.display().to_string(),
-                details: "Column names or types differ".to_string(),
-            }
-            .into());
-        }
-
-        let reader = builder.build().map_err(|e| PqError::read_error(path, &e))?;
-
-        for batch_result in reader {
-            let batch: RecordBatch = batch_result.map_err(|e| PqError::corrupted(path, &e))?;
-            writer
-                .write(&batch)
-                .map_err(|e| PqError::write_error(output, &e))?;
-        }
-    }
-
-    writer
-        .close()
-        .map_err(|e| PqError::write_error(output, &e))?;
-    Ok(())
+    crate::engine::parquet::merge_files(&paths, &args.output)
 }
