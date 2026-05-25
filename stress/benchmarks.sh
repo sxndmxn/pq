@@ -123,11 +123,11 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     hyperfine --warmup 2 --runs 5 \
-        "$PQ query 'SELECT COUNT(*) FROM t' $FIXTURES_DIR/large_10m.parquet"
+        "$PQ count $FIXTURES_DIR/large_10m.parquet"
 
     echo ""
     hyperfine --warmup 2 --runs 3 \
-        "$PQ query 'SELECT bool_3, COUNT(*), AVG(int_0) FROM t GROUP BY bool_3' $FIXTURES_DIR/large_10m.parquet"
+        "$PQ tail -n 1000 $FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================

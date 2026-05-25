@@ -1,8 +1,10 @@
 //! Format conversion command
 
+use crate::cli::args::ConvertArgs;
+use crate::dataset::Dataset;
 use crate::error::{PqError, ResultExt};
 use crate::output::csv as csv_output;
-use anyhow::Result;
+use crate::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::{Map, Value};
@@ -10,7 +12,11 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-pub fn run(input: &Path, output: &Path) -> Result<()> {
+pub fn run(args: ConvertArgs) -> Result<()> {
+    let dataset = Dataset::from_inputs(vec![args.input])?;
+    let input = dataset.sources()[0].path();
+    let output = args.output_path.as_path();
+
     // Determine output format from extension
     let extension = output
         .extension()

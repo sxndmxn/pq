@@ -1,5 +1,6 @@
 //! Pretty table formatting using comfy-table
 
+use crate::engine::parquet::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use comfy_table::{Cell, Table};
@@ -49,7 +50,7 @@ pub fn print_key_value(rows: &[(&str, String)], quiet: bool) {
 }
 
 /// Print schema information as a table
-pub fn print_schema_table(columns: &[(String, String, bool)], quiet: bool) {
+pub fn print_schema_table(columns: &[ColumnInfo], quiet: bool) {
     let mut table = Table::new();
 
     if !quiet {
@@ -60,11 +61,11 @@ pub fn print_schema_table(columns: &[(String, String, bool)], quiet: bool) {
         ]);
     }
 
-    for (name, dtype, nullable) in columns {
+    for column in columns {
         table.add_row(vec![
-            Cell::new(name),
-            Cell::new(dtype),
-            Cell::new(if *nullable { "Yes" } else { "No" }),
+            Cell::new(&column.name),
+            Cell::new(&column.type_name),
+            Cell::new(if column.nullable { "Yes" } else { "No" }),
         ]);
     }
 

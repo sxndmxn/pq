@@ -19,7 +19,6 @@ Commands:
   tail      Show last N rows (default 10)
   count     Count total rows
   stats     Column statistics (min, max, nulls)
-  query     Run SQL query against file
   convert   Convert to CSV, JSON, or JSONL
   merge     Merge multiple parquet files
   info      File metadata (row groups, compression, size)
@@ -87,20 +86,6 @@ $ pq stats data.parquet
 +--------+--------+-------+-------+------+
 ```
 
-### SQL queries
-
-```bash
-$ pq query "SELECT name, SUM(amount) FROM tbl GROUP BY name" data.parquet
-+---------+-------------+
-| name    | SUM(amount) |
-+===========================+
-| Alice   | 1500.50     |
-| Bob     | 2300.75     |
-+---------+-------------+
-
-$ pq query "SELECT * FROM tbl WHERE amount > 100" data.parquet --output json
-```
-
 ### File info
 
 ```bash
@@ -153,7 +138,6 @@ $ pq schema *.parquet
 
 - Sub-100ms startup time
 - Streams data for files larger than RAM
-- SQL queries via DataFusion
 - Multiple output formats
 - Glob pattern support
 - Snappy compression for merge output

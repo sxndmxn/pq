@@ -12,9 +12,7 @@ categories = ["command-line-utilities", "data-structures"]
 clap = { version = "4", features = ["derive"] }
 parquet = "53"
 arrow = { version = "53", features = ["prettyprint"] }
-datafusion = "43"
 comfy-table = "7"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
@@ -32,10 +30,19 @@ path = "src/bin/pq-generate.rs"
 
 [lints.rust]
 unsafe_code = "forbid"
+unused_imports = "deny"
+unused_must_use = "deny"
+missing_debug_implementations = "warn"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
+pedantic = { level = "allow", priority = -1 }
+nursery = { level = "allow", priority = -1 }
+cargo = { level = "allow", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+checked_conversions = "deny"

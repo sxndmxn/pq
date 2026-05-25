@@ -1,5 +1,7 @@
-//! Integration tests for pq CLI
+//! CLI integration tests for pq
 
+use anyhow::Result;
+use std::fs;
 use std::process::Command;
 
 fn pq() -> Command {
@@ -11,212 +13,171 @@ fn fixture_path() -> String {
 }
 
 #[test]
-fn test_help() {
-    let output = pq().arg("--help").output().expect("failed to execute");
+fn test_help() -> Result<()> {
+    let output = pq().arg("--help").output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("pq"));
     assert!(stdout.contains("schema"));
     assert!(stdout.contains("head"));
-    assert!(stdout.contains("query"));
+    assert!(stdout.contains("stats"));
+    Ok(())
 }
 
 #[test]
-fn test_version() {
-    let output = pq().arg("--version").output().expect("failed to execute");
+fn test_version() -> Result<()> {
+    let output = pq().arg("--version").output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("pq"));
+    Ok(())
 }
 
 #[test]
-fn test_schema() {
-    let output = pq()
-        .args(["schema", &fixture_path()])
-        .output()
-        .expect("failed to execute");
+fn test_schema() -> Result<()> {
+    let output = pq().args(["schema", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Column"));
     assert!(stdout.contains("Type"));
     assert!(stdout.contains("id"));
     assert!(stdout.contains("name"));
+    Ok(())
 }
 
 #[test]
-fn test_schema_json() {
+fn test_schema_json() -> Result<()> {
     let output = pq()
         .args(["schema", &fixture_path(), "-o", "json"])
-        .output()
-        .expect("failed to execute");
+        .output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"name\""));
     assert!(stdout.contains("\"type\""));
+    Ok(())
 }
 
 #[test]
-fn test_head() {
-    let output = pq()
-        .args(["head", &fixture_path()])
-        .output()
-        .expect("failed to execute");
+fn test_head() -> Result<()> {
+    let output = pq().args(["head", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Alice"));
     assert!(stdout.contains("Bob"));
+    Ok(())
 }
 
 #[test]
-fn test_head_with_limit() {
-    let output = pq()
-        .args(["head", &fixture_path(), "-n", "2"])
-        .output()
-        .expect("failed to execute");
+fn test_head_with_limit() -> Result<()> {
+    let output = pq().args(["head", &fixture_path(), "-n", "2"]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Alice"));
     assert!(stdout.contains("Bob"));
-    // Should not contain Charlie if we only asked for 2 rows
+    Ok(())
 }
 
 #[test]
-fn test_head_json() {
+fn test_head_json() -> Result<()> {
     let output = pq()
         .args(["head", &fixture_path(), "-o", "json"])
-        .output()
-        .expect("failed to execute");
+        .output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should be valid JSON array
     assert!(stdout.starts_with('['));
     assert!(stdout.contains("\"name\""));
+    Ok(())
 }
 
 #[test]
-fn test_tail() {
-    let output = pq()
-        .args(["tail", &fixture_path(), "-n", "2"])
-        .output()
-        .expect("failed to execute");
+fn test_tail() -> Result<()> {
+    let output = pq().args(["tail", &fixture_path(), "-n", "2"]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diana") || stdout.contains("Eve"));
+    Ok(())
 }
 
 #[test]
-fn test_count() {
-    let output = pq()
-        .args(["count", &fixture_path()])
-        .output()
-        .expect("failed to execute");
+fn test_count() -> Result<()> {
+    let output = pq().args(["count", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.trim() == "5");
+    assert_eq!(stdout.trim(), "5");
+    Ok(())
 }
 
 #[test]
-fn test_stats() {
-    let output = pq()
-        .args(["stats", &fixture_path()])
-        .output()
-        .expect("failed to execute");
+fn test_stats() -> Result<()> {
+    let output = pq().args(["stats", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Column"));
     assert!(stdout.contains("Min"));
     assert!(stdout.contains("Max"));
     assert!(stdout.contains("id"));
+    Ok(())
 }
 
 #[test]
-fn test_info() {
-    let output = pq()
-        .args(["info", &fixture_path()])
-        .output()
-        .expect("failed to execute");
+fn test_info() -> Result<()> {
+    let output = pq().args(["info", &fixture_path()]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Rows"));
     assert!(stdout.contains("Columns"));
     assert!(stdout.contains("Compression"));
+    Ok(())
 }
 
 #[test]
-fn test_query() {
-    let output = pq()
-        .args([
-            "query",
-            "SELECT name, amount FROM tbl WHERE amount > 200",
-            &fixture_path(),
-        ])
-        .output()
-        .expect("failed to execute");
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("name"));
-    assert!(stdout.contains("amount"));
-}
-
-#[test]
-fn test_query_json() {
-    let output = pq()
-        .args([
-            "query",
-            "SELECT COUNT(*) as cnt FROM tbl",
-            &fixture_path(),
-            "-o",
-            "json",
-        ])
-        .output()
-        .expect("failed to execute");
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("cnt"));
-}
-
-#[test]
-fn test_convert_csv() {
+fn test_convert_csv() -> Result<()> {
     let temp_dir = std::env::temp_dir();
     let output_path = temp_dir.join("pq_test_output.csv");
 
     let output = pq()
-        .args(["convert", &fixture_path(), output_path.to_str().unwrap()])
-        .output()
-        .expect("failed to execute");
+        .args([
+            "convert",
+            &fixture_path(),
+            &output_path.display().to_string(),
+        ])
+        .output()?;
     assert!(output.status.success());
     assert!(output_path.exists());
 
-    let contents = std::fs::read_to_string(&output_path).unwrap();
+    let contents = fs::read_to_string(&output_path)?;
     assert!(contents.contains("id,name,amount,active"));
     assert!(contents.contains("Alice"));
 
-    // Cleanup
-    std::fs::remove_file(&output_path).ok();
+    let _ignored = fs::remove_file(&output_path);
+    Ok(())
 }
 
 #[test]
-fn test_convert_json() {
+fn test_convert_json() -> Result<()> {
     let temp_dir = std::env::temp_dir();
     let output_path = temp_dir.join("pq_test_output.json");
 
     let output = pq()
-        .args(["convert", &fixture_path(), output_path.to_str().unwrap()])
-        .output()
-        .expect("failed to execute");
+        .args([
+            "convert",
+            &fixture_path(),
+            &output_path.display().to_string(),
+        ])
+        .output()?;
     assert!(output.status.success());
     assert!(output_path.exists());
 
-    let contents = std::fs::read_to_string(&output_path).unwrap();
+    let contents = fs::read_to_string(&output_path)?;
     assert!(contents.starts_with('['));
     assert!(contents.contains("\"name\""));
 
-    // Cleanup
-    std::fs::remove_file(&output_path).ok();
+    let _ignored = fs::remove_file(&output_path);
+    Ok(())
 }
 
 #[test]
-fn test_merge() {
+fn test_merge() -> Result<()> {
     let temp_dir = std::env::temp_dir();
     let output_path = temp_dir.join("pq_test_merged.parquet");
 
@@ -226,21 +187,18 @@ fn test_merge() {
             &fixture_path(),
             &fixture_path(),
             "-o",
-            output_path.to_str().unwrap(),
+            &output_path.display().to_string(),
         ])
-        .output()
-        .expect("failed to execute");
+        .output()?;
     assert!(output.status.success());
     assert!(output_path.exists());
 
-    // Verify merged file has doubled row count
     let count_output = pq()
-        .args(["count", output_path.to_str().unwrap()])
-        .output()
-        .expect("failed to execute");
+        .args(["count", &output_path.display().to_string()])
+        .output()?;
     let stdout = String::from_utf8_lossy(&count_output.stdout);
-    assert!(stdout.trim() == "10");
+    assert_eq!(stdout.trim(), "10");
 
-    // Cleanup
-    std::fs::remove_file(&output_path).ok();
+    let _ignored = fs::remove_file(&output_path);
+    Ok(())
 }
