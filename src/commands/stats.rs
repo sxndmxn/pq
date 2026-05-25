@@ -30,9 +30,7 @@ struct StatRow {
     max: Option<String>,
 }
 
-pub fn run(
-    args: StatsArgs,
-) -> Result<()> {
+pub fn run(args: StatsArgs) -> Result<()> {
     let dataset = Dataset::from_inputs(args.inputs)?;
 
     for source in dataset.sources() {

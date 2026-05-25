@@ -1,5 +1,6 @@
 //! JSON and JSONL output formatting
 
+use crate::engine::parquet::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use serde::Serialize;
@@ -76,7 +77,7 @@ pub fn print_value<T: Serialize>(value: &T) -> Result<()> {
 }
 
 /// Print schema as JSON array
-pub fn print_schema(columns: &[(String, String, bool)]) -> Result<()> {
+pub fn print_schema(columns: &[ColumnInfo]) -> Result<()> {
     #[derive(Serialize)]
     struct Column {
         name: String,
@@ -87,10 +88,10 @@ pub fn print_schema(columns: &[(String, String, bool)]) -> Result<()> {
 
     let cols: Vec<_> = columns
         .iter()
-        .map(|(name, dtype, nullable)| Column {
-            name: name.clone(),
-            dtype: dtype.clone(),
-            nullable: *nullable,
+        .map(|column| Column {
+            name: column.name.clone(),
+            dtype: column.type_name.clone(),
+            nullable: column.nullable,
         })
         .collect();
 

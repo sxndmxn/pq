@@ -6,6 +6,13 @@ use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::fs::{self, File};
 use std::path::Path;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ColumnInfo {
+    pub name: String,
+    pub type_name: String,
+    pub nullable: bool,
+}
+
 pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let builder = reader_builder(path)?;
     let reader = builder
@@ -72,19 +79,17 @@ pub fn row_count(path: &Path) -> Result<i64> {
     Ok(reader.metadata().file_metadata().num_rows())
 }
 
-pub fn schema_columns(path: &Path) -> Result<Vec<(String, String, bool)>> {
+pub fn schema_columns(path: &Path) -> Result<Vec<ColumnInfo>> {
     let reader = serialized_reader(path)?;
     let schema = reader.metadata().file_metadata().schema_descr();
 
     Ok(schema
         .columns()
         .iter()
-        .map(|column| {
-            (
-                column.name().to_string(),
-                format!("{:?}", column.physical_type()),
-                column.self_type().is_optional(),
-            )
+        .map(|column| ColumnInfo {
+            name: column.name().to_string(),
+            type_name: format!("{:?}", column.physical_type()),
+            nullable: column.self_type().is_optional(),
         })
         .collect())
 }
@@ -95,12 +100,13 @@ pub fn file_size(path: &Path) -> Result<u64> {
 
 fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
-    ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| map_parquet_error(path, error))
+    Ok(ParquetRecordBatchReaderBuilder::try_new(file)
+        .map_err(|error| map_parquet_error(path, error))?)
 }
 
 fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
     let file = File::open(path).with_path_context(path)?;
-    SerializedFileReader::new(file).map_err(|error| map_parquet_error(path, error))
+    Ok(SerializedFileReader::new(file).map_err(|error| map_parquet_error(path, error))?)
 }
 
 fn map_parquet_error(path: &Path, error: impl std::fmt::Display) -> PqError {

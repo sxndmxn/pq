@@ -16,7 +16,9 @@ pub fn run(args: SchemaArgs) -> Result<()> {
         let columns = engine::parquet::schema_columns(source.path())?;
 
         match args.output {
-            crate::cli::args::OutputFormat::Table => table::print_schema_table(&columns, args.quiet),
+            crate::cli::args::OutputFormat::Table => {
+                table::print_schema_table(&columns, args.quiet)
+            }
             crate::cli::args::OutputFormat::Json | crate::cli::args::OutputFormat::Jsonl => {
                 json::print_schema(&columns)?
             }

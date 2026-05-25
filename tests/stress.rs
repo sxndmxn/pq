@@ -209,8 +209,8 @@ fn edge_bit_flipped_file() {
 
     // Flip some bits in the middle of the file (metadata area)
     if data.len() > 100 {
-        for i in 50..60 {
-            data[i] ^= 0xFF; // Flip all bits in these bytes
+        for byte in data.iter_mut().take(60).skip(50) {
+            *byte ^= 0xFF; // Flip all bits in these bytes
         }
     }
 

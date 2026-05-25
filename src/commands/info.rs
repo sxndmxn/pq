@@ -2,8 +2,9 @@
 
 use crate::cli::args::{InfoArgs, OutputFormat};
 use crate::dataset::Dataset;
+use crate::error::ResultExt;
 use crate::output::table;
-use crate::{engine, Result};
+use crate::{engine, PqError, Result};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde::Serialize;
 use std::fs::File;
@@ -30,7 +31,7 @@ pub fn run(args: InfoArgs) -> Result<()> {
         }
 
         let path = source.path();
-        let file = File::open(path)?;
+        let file = File::open(path).with_path_context(path)?;
         let file_size = engine::parquet::file_size(path)?;
         let reader = SerializedFileReader::new(file).map_err(|e| {
             let msg = e.to_string().to_lowercase();
@@ -86,8 +87,7 @@ pub fn run(args: InfoArgs) -> Result<()> {
                     ("Created By", created_by),
                     ("Version", version.to_string()),
                 ];
-                let rows_ref: Vec<(&str, String)> = rows.into_iter().collect();
-                table::print_key_value(&rows_ref, args.quiet);
+                table::print_key_value(&rows, args.quiet);
             }
             OutputFormat::Json | OutputFormat::Csv => {
                 all_info.push(info);

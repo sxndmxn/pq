@@ -69,9 +69,7 @@ fn test_head() -> Result<()> {
 
 #[test]
 fn test_head_with_limit() -> Result<()> {
-    let output = pq()
-        .args(["head", &fixture_path(), "-n", "2"])
-        .output()?;
+    let output = pq().args(["head", &fixture_path(), "-n", "2"]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Alice"));
@@ -93,9 +91,7 @@ fn test_head_json() -> Result<()> {
 
 #[test]
 fn test_tail() -> Result<()> {
-    let output = pq()
-        .args(["tail", &fixture_path(), "-n", "2"])
-        .output()?;
+    let output = pq().args(["tail", &fixture_path(), "-n", "2"]).output()?;
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diana") || stdout.contains("Eve"));
@@ -140,7 +136,11 @@ fn test_convert_csv() -> Result<()> {
     let output_path = temp_dir.join("pq_test_output.csv");
 
     let output = pq()
-        .args(["convert", &fixture_path(), &output_path.display().to_string()])
+        .args([
+            "convert",
+            &fixture_path(),
+            &output_path.display().to_string(),
+        ])
         .output()?;
     assert!(output.status.success());
     assert!(output_path.exists());
@@ -159,7 +159,11 @@ fn test_convert_json() -> Result<()> {
     let output_path = temp_dir.join("pq_test_output.json");
 
     let output = pq()
-        .args(["convert", &fixture_path(), &output_path.display().to_string()])
+        .args([
+            "convert",
+            &fixture_path(),
+            &output_path.display().to_string(),
+        ])
         .output()?;
     assert!(output.status.success());
     assert!(output_path.exists());

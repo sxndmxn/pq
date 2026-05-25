@@ -36,9 +36,9 @@ missing_debug_implementations = "warn"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = "allow"
-nursery = "allow"
-cargo = "allow"
+pedantic = { level = "allow", priority = -1 }
+nursery = { level = "allow", priority = -1 }
+cargo = { level = "allow", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
