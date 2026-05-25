@@ -6,11 +6,17 @@ use crate::dataset::Dataset;
 use crate::{commands, output, Result};
 
 pub fn run(args: SchemaArgs) -> Result<()> {
-    let dataset = Dataset::from_inputs(args.inputs)?;
+    let SchemaArgs {
+        inputs,
+        output,
+        quiet,
+    } = args;
+    let dataset = Dataset::from_inputs(inputs)?;
+    let output = output.into();
 
     for result in api::schema(&dataset)? {
-        commands::print_source_header(&dataset, &result.path, args.quiet);
-        output::write_schema(args.output, args.quiet, &result.columns)?;
+        commands::print_source_header(&dataset, &result.path, quiet);
+        output::write_schema(output, quiet, &result.columns)?;
     }
     Ok(())
 }

@@ -19,7 +19,6 @@ pub use model::{
     ColumnInfo, ColumnStats, ColumnType, CompressionCodec, FileInfo, LogicalTypeKind, PhysicalType,
     StatValue, TimeUnit,
 };
-pub use output::OutputFormat;
 
 pub fn run_cli() -> Result<()> {
     let cli = cli::args::Cli::parse();

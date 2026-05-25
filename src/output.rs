@@ -3,7 +3,6 @@ use crate::error::PqError;
 use crate::model::{ColumnInfo, ColumnStats, FileInfo, StatValue};
 use crate::Result;
 use arrow::array::RecordBatch;
-use clap::ValueEnum;
 use serde::Serialize;
 use serde_json::Value;
 use std::io;
@@ -18,8 +17,8 @@ mod schema;
 mod stats;
 mod table;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
-pub enum OutputFormat {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum OutputFormat {
     #[default]
     Table,
     Json,
