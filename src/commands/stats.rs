@@ -47,7 +47,7 @@ impl StatValue {
         }
     }
 
-    fn partial_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp_value(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Int32(left), Self::Int32(right)) => left.partial_cmp(right),
             (Self::Int64(left), Self::Int64(right)) => left.partial_cmp(right),
@@ -213,7 +213,7 @@ fn merge_bound(
     let replace = match current.as_ref() {
         None => true,
         Some(existing) => candidate
-            .partial_compare(existing)
+            .partial_cmp_value(existing)
             .is_some_and(should_replace),
     };
 
