@@ -1,24 +1,26 @@
 use crate::model::ColumnInfo;
+use crate::output::csv_support::escape_csv;
+use anyhow::Result;
+use std::io::Write;
 
-pub fn print_csv(columns: &[ColumnInfo], include_header: bool) {
+pub fn write_csv<W: Write>(
+    mut writer: W,
+    columns: &[ColumnInfo],
+    include_header: bool,
+) -> Result<()> {
     if include_header {
-        println!("column,type,nullable");
+        writeln!(writer, "column,type,nullable")?;
     }
 
     for column in columns {
-        println!(
+        writeln!(
+            writer,
             "{},{},{}",
             escape_csv(&column.name),
-            escape_csv(&column.type_name),
+            escape_csv(&column.display_type()),
             column.nullable
-        );
+        )?;
     }
-}
 
-fn escape_csv(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
+    Ok(())
 }

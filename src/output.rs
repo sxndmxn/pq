@@ -1,11 +1,15 @@
 use crate::cli::args::OutputFormat;
 use crate::error::PqError;
-use crate::model::{ColumnInfo, ColumnStats, FileInfo};
+use crate::model::{ColumnInfo, ColumnStats, FileInfo, StatValue};
 use crate::Result;
 use arrow::array::RecordBatch;
+use serde::Serialize;
+use serde_json::Value;
+use std::io;
 use std::path::Path;
 
 pub mod csv;
+pub(crate) mod csv_support;
 pub mod info;
 pub mod json;
 pub mod schema;
@@ -19,58 +23,78 @@ enum FileOutputFormat {
     Jsonl,
 }
 
+#[derive(Serialize)]
+struct SchemaJsonRow {
+    name: String,
+    #[serde(rename = "type")]
+    display_type: String,
+    nullable: bool,
+    physical_type: String,
+    logical_type: Option<String>,
+}
+
+#[derive(Serialize)]
+struct StatsJsonRow {
+    column: String,
+    #[serde(rename = "type")]
+    display_type: String,
+    null_count: u64,
+    min: Option<Value>,
+    max: Option<Value>,
+    physical_type: String,
+    logical_type: Option<String>,
+}
+
+#[derive(Serialize)]
+struct FileInfoJsonRow {
+    file: String,
+    file_size_bytes: u64,
+    num_rows: i64,
+    num_columns: usize,
+    num_row_groups: usize,
+    compression: Option<String>,
+    created_by: Option<String>,
+    version: i32,
+}
+
 pub fn write_batches(output: OutputFormat, quiet: bool, batches: &[RecordBatch]) -> Result<()> {
     match output {
-        OutputFormat::Table => table::print_batches(batches, quiet),
-        OutputFormat::Json => json::print_batches(batches),
-        OutputFormat::Jsonl => json::print_batches_jsonl(batches),
-        OutputFormat::Csv => csv::print_batches(batches, !quiet),
+        OutputFormat::Table => table::write_batches(io::stdout().lock(), batches, quiet)?,
+        OutputFormat::Json => json::write_json(io::stdout().lock(), batches)?,
+        OutputFormat::Jsonl => json::write_jsonl(io::stdout().lock(), batches)?,
+        OutputFormat::Csv => csv::write_batches(io::stdout().lock(), batches, !quiet)?,
     }
+    Ok(())
 }
 
 pub fn write_schema(output: OutputFormat, quiet: bool, columns: &[ColumnInfo]) -> Result<()> {
     match output {
-        OutputFormat::Table => {
-            table::print_schema_table(columns, quiet);
-            Ok(())
-        }
-        OutputFormat::Json => json::print_value(columns),
-        OutputFormat::Jsonl => json::print_json_lines(columns),
-        OutputFormat::Csv => {
-            schema::print_csv(columns, !quiet);
-            Ok(())
-        }
+        OutputFormat::Table => table::write_schema_table(io::stdout().lock(), columns, quiet)?,
+        OutputFormat::Json => json::write_value(io::stdout().lock(), &schema_rows(columns))?,
+        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &schema_rows(columns))?,
+        OutputFormat::Csv => schema::write_csv(io::stdout().lock(), columns, !quiet)?,
     }
+    Ok(())
 }
 
 pub fn write_stats(output: OutputFormat, quiet: bool, rows: &[ColumnStats]) -> Result<()> {
     match output {
-        OutputFormat::Table => {
-            stats::print_table(rows, quiet);
-            Ok(())
-        }
-        OutputFormat::Json => json::print_value(rows),
-        OutputFormat::Jsonl => json::print_json_lines(rows),
-        OutputFormat::Csv => {
-            stats::print_csv(rows, !quiet);
-            Ok(())
-        }
+        OutputFormat::Table => stats::write_table(io::stdout().lock(), rows, quiet)?,
+        OutputFormat::Json => json::write_value(io::stdout().lock(), &stats_rows(rows))?,
+        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &stats_rows(rows))?,
+        OutputFormat::Csv => stats::write_csv(io::stdout().lock(), rows, !quiet)?,
     }
+    Ok(())
 }
 
 pub fn write_file_infos(output: OutputFormat, quiet: bool, rows: &[FileInfo]) -> Result<()> {
     match output {
-        OutputFormat::Table => {
-            info::print_table(rows, quiet);
-            Ok(())
-        }
-        OutputFormat::Json => json::print_value(rows),
-        OutputFormat::Jsonl => json::print_json_lines(rows),
-        OutputFormat::Csv => {
-            info::print_csv(rows, !quiet);
-            Ok(())
-        }
+        OutputFormat::Table => info::write_table(io::stdout().lock(), rows, quiet)?,
+        OutputFormat::Json => json::write_value(io::stdout().lock(), &file_info_rows(rows))?,
+        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &file_info_rows(rows))?,
+        OutputFormat::Csv => info::write_csv(io::stdout().lock(), rows, !quiet)?,
     }
+    Ok(())
 }
 
 pub fn write_batches_to_path(path: &Path, batches: &[RecordBatch]) -> Result<()> {
@@ -104,6 +128,70 @@ fn file_output_format(path: &Path) -> Result<FileOutputFormat> {
             supported: "csv, json, jsonl".to_string(),
         }
         .into()),
+    }
+}
+
+fn schema_rows(columns: &[ColumnInfo]) -> Vec<SchemaJsonRow> {
+    columns
+        .iter()
+        .map(|column| SchemaJsonRow {
+            name: column.name.clone(),
+            display_type: column.display_type(),
+            nullable: column.nullable,
+            physical_type: column.column_type.physical.to_string(),
+            logical_type: column
+                .column_type
+                .logical
+                .as_ref()
+                .map(|logical| logical.display_name()),
+        })
+        .collect()
+}
+
+fn stats_rows(rows: &[ColumnStats]) -> Vec<StatsJsonRow> {
+    rows.iter()
+        .map(|row| StatsJsonRow {
+            column: row.column.clone(),
+            display_type: row.display_type(),
+            null_count: row.null_count,
+            min: row.min.as_ref().map(stat_value_json),
+            max: row.max.as_ref().map(stat_value_json),
+            physical_type: row.column_type.physical.to_string(),
+            logical_type: row
+                .column_type
+                .logical
+                .as_ref()
+                .map(|logical| logical.display_name()),
+        })
+        .collect()
+}
+
+fn file_info_rows(rows: &[FileInfo]) -> Vec<FileInfoJsonRow> {
+    rows.iter()
+        .map(|row| FileInfoJsonRow {
+            file: row.path().display().to_string(),
+            file_size_bytes: row.file_size_bytes,
+            num_rows: row.num_rows,
+            num_columns: row.num_columns,
+            num_row_groups: row.num_row_groups,
+            compression: row.compression.map(|compression| compression.to_string()),
+            created_by: row.created_by.clone(),
+            version: row.version,
+        })
+        .collect()
+}
+
+fn stat_value_json(value: &StatValue) -> Value {
+    match value {
+        StatValue::Int32(inner) => Value::from(*inner),
+        StatValue::Int64(inner) => Value::from(*inner),
+        StatValue::Float(inner) => Value::from(*inner),
+        StatValue::Double(inner) => Value::from(*inner),
+        StatValue::Binary(inner) | StatValue::FixedLenBinary(inner) => {
+            Value::from(String::from_utf8_lossy(inner).to_string())
+        }
+        StatValue::Boolean(inner) => Value::from(*inner),
+        StatValue::Int96(inner) => Value::from(inner.clone()),
     }
 }
 

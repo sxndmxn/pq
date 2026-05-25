@@ -1,5 +1,5 @@
 use crate::error::{PqError, ResultExt};
-use crate::model::{ColumnInfo, FileInfo};
+use crate::model::{ColumnInfo, ColumnType, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -12,6 +12,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
+    if rows == 0 {
+        return Ok(Vec::new());
+    }
+
     let builder = reader_builder(path)?;
     let reader = builder
         .with_batch_size(rows.min(1024))
@@ -42,31 +46,37 @@ pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
 }
 
 pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
+    if rows == 0 {
+        return Ok(Vec::new());
+    }
+
     let builder = reader_builder(path)?;
+    let metadata = Arc::clone(builder.metadata());
+    if metadata.num_row_groups() == 0 {
+        return Ok(Vec::new());
+    }
+
+    let (row_groups, rows_to_skip) = tail_row_groups(&metadata, rows)?;
     let reader = builder
+        .with_row_groups(row_groups)
         .build()
         .map_err(|error| PqError::from_read(path, error))?;
-
-    let all_batches: Vec<RecordBatch> = reader
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(|error| PqError::corrupted(path, &error))?;
-
-    let total_rows: usize = all_batches.iter().map(RecordBatch::num_rows).sum();
-    let skip_rows = total_rows.saturating_sub(rows);
 
     let mut result_batches = Vec::new();
     let mut skipped = 0usize;
 
-    for batch in all_batches {
-        if skipped + batch.num_rows() <= skip_rows {
+    for batch_result in reader {
+        let batch = batch_result.map_err(|error| PqError::corrupted(path, &error))?;
+
+        if skipped + batch.num_rows() <= rows_to_skip {
             skipped += batch.num_rows();
             continue;
         }
 
-        let offset = skip_rows.saturating_sub(skipped);
+        let offset = rows_to_skip.saturating_sub(skipped);
         let sliced = batch.slice(offset, batch.num_rows() - offset);
         result_batches.push(sliced);
-        skipped = skip_rows;
+        skipped = rows_to_skip;
     }
 
     Ok(result_batches)
@@ -86,7 +96,7 @@ pub fn schema_columns(path: &Path) -> Result<Vec<ColumnInfo>> {
         .iter()
         .map(|column| ColumnInfo {
             name: column.name().to_string(),
-            type_name: format!("{:?}", column.physical_type()),
+            column_type: ColumnType::from_parquet(column),
             nullable: column.self_type().is_optional(),
         })
         .collect())
@@ -105,22 +115,22 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     let compression = if num_row_groups > 0 {
         let row_group = metadata.row_group(0);
         if row_group.num_columns() > 0 {
-            format!("{:?}", row_group.column(0).compression())
+            Some(row_group.column(0).compression().into())
         } else {
-            "N/A".to_string()
+            None
         }
     } else {
-        "N/A".to_string()
+        None
     };
 
     Ok(FileInfo {
-        file: path.display().to_string(),
+        path: path.to_path_buf(),
         file_size_bytes: file_size(path)?,
         num_rows: file_metadata.num_rows(),
         num_columns: file_metadata.schema_descr().num_columns(),
         num_row_groups,
         compression,
-        created_by: file_metadata.created_by().unwrap_or("unknown").to_string(),
+        created_by: file_metadata.created_by().map(ToOwned::to_owned),
         version: file_metadata.version(),
     })
 }
@@ -148,7 +158,7 @@ pub fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
 
 pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     if paths.is_empty() {
-        return Err(anyhow::anyhow!("No input files specified"));
+        return Err(PqError::NoInputFiles.into());
     }
 
     let first_builder = reader_builder(paths[0])?;
@@ -189,4 +199,32 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
         .close()
         .map_err(|error| PqError::write_error(output, error))?;
     Ok(())
+}
+
+fn tail_row_groups(
+    metadata: &parquet::file::metadata::ParquetMetaData,
+    rows: usize,
+) -> Result<(Vec<usize>, usize)> {
+    let mut selected_groups = Vec::new();
+    let mut selected_rows = 0usize;
+
+    for row_group_index in (0..metadata.num_row_groups()).rev() {
+        let row_group = metadata.row_group(row_group_index);
+        let row_group_rows = usize::try_from(row_group.num_rows()).map_err(|_| {
+            anyhow::anyhow!(
+                "row group {} in {} cannot be represented on this platform",
+                row_group_index,
+                metadata.file_metadata().schema_descr().root_schema().name()
+            )
+        })?;
+
+        selected_groups.push(row_group_index);
+        selected_rows = selected_rows.saturating_add(row_group_rows);
+        if selected_rows >= rows {
+            break;
+        }
+    }
+
+    selected_groups.reverse();
+    Ok((selected_groups, selected_rows.saturating_sub(rows)))
 }

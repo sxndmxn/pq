@@ -1,7 +1,13 @@
 use crate::model::ColumnStats;
+use crate::output::csv_support::escape_csv;
 use comfy_table::{Cell, Table};
+use std::io::Write;
 
-pub fn print_table(rows: &[ColumnStats], quiet: bool) {
+pub fn write_table<W: Write>(
+    mut writer: W,
+    rows: &[ColumnStats],
+    quiet: bool,
+) -> std::io::Result<()> {
     let mut table = Table::new();
     if !quiet {
         table.set_header(vec!["Column", "Type", "Nulls", "Min", "Max"]);
@@ -10,37 +16,52 @@ pub fn print_table(rows: &[ColumnStats], quiet: bool) {
     for row in rows {
         table.add_row(vec![
             Cell::new(&row.column),
-            Cell::new(&row.dtype),
+            Cell::new(row.display_type()),
             Cell::new(row.null_count),
-            Cell::new(row.min.as_deref().unwrap_or("N/A")),
-            Cell::new(row.max.as_deref().unwrap_or("N/A")),
+            Cell::new(
+                row.min
+                    .as_ref()
+                    .map_or_else(|| "N/A".to_string(), ToString::to_string),
+            ),
+            Cell::new(
+                row.max
+                    .as_ref()
+                    .map_or_else(|| "N/A".to_string(), ToString::to_string),
+            ),
         ]);
     }
 
-    println!("{table}");
+    writeln!(writer, "{table}")
 }
 
-pub fn print_csv(rows: &[ColumnStats], include_header: bool) {
+pub fn write_csv<W: Write>(
+    mut writer: W,
+    rows: &[ColumnStats],
+    include_header: bool,
+) -> std::io::Result<()> {
     if include_header {
-        println!("column,type,null_count,min,max");
+        writeln!(writer, "column,type,null_count,min,max")?;
     }
 
     for row in rows {
-        println!(
+        writeln!(
+            writer,
             "{},{},{},{},{}",
             escape_csv(&row.column),
-            escape_csv(&row.dtype),
+            escape_csv(&row.display_type()),
             row.null_count,
-            escape_csv(row.min.as_deref().unwrap_or("")),
-            escape_csv(row.max.as_deref().unwrap_or("")),
-        );
+            escape_csv(
+                &row.min
+                    .as_ref()
+                    .map_or_else(String::new, ToString::to_string)
+            ),
+            escape_csv(
+                &row.max
+                    .as_ref()
+                    .map_or_else(String::new, ToString::to_string)
+            ),
+        )?;
     }
-}
 
-fn escape_csv(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
+    Ok(())
 }

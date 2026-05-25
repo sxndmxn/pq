@@ -1,6 +1,5 @@
 use crate::error::PqError;
 use crate::Result;
-use anyhow::bail;
 use std::path::{Path, PathBuf};
 
 const MAX_GLOB_FILES: usize = 10_000;
@@ -17,43 +16,27 @@ pub struct DatasetSource {
 
 impl Dataset {
     pub fn from_inputs(inputs: Vec<PathBuf>) -> Result<Self> {
+        if inputs.is_empty() {
+            return Err(PqError::NoInputFiles.into());
+        }
+
         let mut sources = Vec::new();
 
         for input in inputs {
-            let path_str = input.to_string_lossy();
-            if path_str.contains('*') || path_str.contains('?') || path_str.contains('[') {
-                let matches: Vec<_> = glob::glob(&path_str)?
-                    .filter_map(std::result::Result::ok)
-                    .filter(|path| path.is_file())
-                    .take(MAX_GLOB_FILES + 1)
-                    .map(|path| DatasetSource { path })
-                    .collect();
-
-                if matches.is_empty() {
-                    return Err(PqError::NoFilesMatched {
-                        pattern: path_str.into_owned(),
-                    }
-                    .into());
-                }
-
-                if matches.len() > MAX_GLOB_FILES {
-                    bail!(
-                        "Pattern '{path_str}' matched more than {MAX_GLOB_FILES} files. Use a more specific pattern."
-                    );
-                }
-
-                sources.extend(matches);
+            if is_glob_pattern(&input) {
+                expand_glob_input(&input, &mut sources)?;
             } else {
                 validate_file_path(&input)?;
                 sources.push(DatasetSource { path: input });
             }
         }
 
-        if sources.is_empty() {
-            bail!("No input files specified");
-        }
-
         sources.sort();
+        sources.dedup();
+
+        if sources.is_empty() {
+            return Err(PqError::NoInputFiles.into());
+        }
 
         Ok(Self { sources })
     }
@@ -77,6 +60,37 @@ impl DatasetSource {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+fn expand_glob_input(input: &Path, sources: &mut Vec<DatasetSource>) -> Result<()> {
+    let pattern = input.to_string_lossy().into_owned();
+    let mut matches = Vec::new();
+
+    for entry in glob::glob(&pattern)? {
+        let path = entry?;
+        validate_file_path(&path)?;
+        matches.push(DatasetSource { path });
+
+        if matches.len() > MAX_GLOB_FILES {
+            return Err(PqError::TooManyFilesMatched {
+                pattern,
+                max_matches: MAX_GLOB_FILES,
+            }
+            .into());
+        }
+    }
+
+    if matches.is_empty() {
+        return Err(PqError::NoFilesMatched { pattern }.into());
+    }
+
+    sources.extend(matches);
+    Ok(())
+}
+
+fn is_glob_pattern(path: &Path) -> bool {
+    let path = path.to_string_lossy();
+    path.contains('*') || path.contains('?') || path.contains('[')
 }
 
 fn validate_file_path(path: &Path) -> Result<()> {

@@ -1,11 +1,17 @@
 //! Custom error types with user-friendly messages
 
+use arrow::error::ArrowError;
+use parquet::errors::ParquetError;
+use std::error::Error;
 use std::path::Path;
 use thiserror::Error;
 
 /// User-facing error with context
 #[derive(Debug, Error)]
 pub enum PqError {
+    #[error("No input files specified")]
+    NoInputFiles,
+
     #[error("File not found: {path}")]
     FileNotFound { path: String },
 
@@ -23,6 +29,11 @@ pub enum PqError {
 
     #[error("No files matched pattern: {pattern}")]
     NoFilesMatched { pattern: String },
+
+    #[error(
+        "Pattern '{pattern}' matched more than {max_matches} files. Use a more specific pattern."
+    )]
+    TooManyFilesMatched { pattern: String, max_matches: usize },
 
     #[error("Schema mismatch between files:\n  {file1}\n  {file2}\n  {details}")]
     SchemaMismatch {
@@ -49,7 +60,6 @@ impl PqError {
     /// Create an invalid parquet error from a library error
     pub fn invalid_parquet(path: &Path, err: impl std::fmt::Display) -> Self {
         let details = err.to_string();
-        // Simplify common error messages
         let details = simplify_parquet_error(&details);
         Self::InvalidParquet {
             path: path.display().to_string(),
@@ -118,11 +128,14 @@ impl PqError {
             path: path.display().to_string(),
         }
     }
+
+    pub fn should_hide_cause(error: &(dyn Error + 'static)) -> bool {
+        error.is::<Self>() || error.is::<ArrowError>() || error.is::<ParquetError>()
+    }
 }
 
 /// Simplify parquet library error messages to be more user-friendly
 fn simplify_parquet_error(msg: &str) -> String {
-    // Handle common parquet error patterns
     if msg.contains("not a valid Parquet file") || msg.contains("Invalid Parquet file") {
         return "File does not have valid Parquet magic bytes".to_string();
     }
@@ -139,7 +152,6 @@ fn simplify_parquet_error(msg: &str) -> String {
         return "File contains invalid or out-of-spec data".to_string();
     }
 
-    // Return original if no simplification available
     msg.to_string()
 }
 

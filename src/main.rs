@@ -1,20 +1,15 @@
 use clap::Parser;
-use pq::{Cli, Result};
+use pq::{Cli, PqError, Result};
 
 fn main() {
     if let Err(err) = run() {
-        // Print user-friendly error message
         eprintln!("error: {err}");
 
-        // Print cause chain without internal details
-        let mut source = err.source();
-        while let Some(cause) = source {
-            // Skip internal library error types that aren't helpful
-            let msg = cause.to_string();
-            if !msg.contains("ArrowError") && !msg.contains("ParquetError") {
-                eprintln!("  caused by: {msg}");
+        for cause in err.chain().skip(1) {
+            if PqError::should_hide_cause(cause) {
+                continue;
             }
-            source = cause.source();
+            eprintln!("  caused by: {cause}");
         }
 
         std::process::exit(1);

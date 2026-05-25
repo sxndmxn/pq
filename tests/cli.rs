@@ -352,8 +352,8 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
         rows[0]["column"],
         serde_json::Value::String("value".to_string())
     );
-    assert_eq!(rows[0]["min"], serde_json::Value::String("1".to_string()));
-    assert_eq!(rows[0]["max"], serde_json::Value::String("10".to_string()));
+    assert_eq!(rows[0]["min"], serde_json::json!(1));
+    assert_eq!(rows[0]["max"], serde_json::json!(10));
 
     let _ignored = fs::remove_file(&input_path);
     Ok(())
