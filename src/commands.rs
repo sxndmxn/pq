@@ -11,7 +11,7 @@ pub mod scan;
 pub mod schema;
 pub mod stats;
 
-pub fn run(command: Command) -> Result<()> {
+pub(crate) fn run(command: Command) -> Result<()> {
     match command {
         Command::Schema(args) => schema::run(args),
         Command::Head(args) => scan::run_head(args),

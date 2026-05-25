@@ -1,4 +1,5 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use crate::OutputFormat;
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -30,15 +31,6 @@ pub enum Command {
     Merge(MergeArgs),
     /// File metadata (row groups, compression, size)
     Info(InfoArgs),
-}
-
-#[derive(Clone, Copy, Debug, Default, ValueEnum)]
-pub enum OutputFormat {
-    #[default]
-    Table,
-    Json,
-    Jsonl,
-    Csv,
 }
 
 #[derive(Debug, Args)]

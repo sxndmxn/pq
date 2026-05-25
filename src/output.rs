@@ -1,11 +1,13 @@
-use crate::cli::args::OutputFormat;
+use crate::api::CountResult;
 use crate::error::PqError;
 use crate::model::{ColumnInfo, ColumnStats, FileInfo, StatValue};
 use crate::Result;
 use arrow::array::RecordBatch;
+use clap::ValueEnum;
 use serde::Serialize;
 use serde_json::Value;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 
 pub mod csv;
@@ -15,6 +17,15 @@ pub mod json;
 pub mod schema;
 pub mod stats;
 pub mod table;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum OutputFormat {
+    #[default]
+    Table,
+    Json,
+    Jsonl,
+    Csv,
+}
 
 #[derive(Debug)]
 enum FileOutputFormat {
@@ -89,11 +100,40 @@ pub fn write_stats(output: OutputFormat, quiet: bool, rows: &[ColumnStats]) -> R
 
 pub fn write_file_infos(output: OutputFormat, quiet: bool, rows: &[FileInfo]) -> Result<()> {
     match output {
-        OutputFormat::Table => info::write_table(io::stdout().lock(), rows, quiet)?,
+        OutputFormat::Table => {
+            let mut writer = io::stdout().lock();
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    writeln!(writer)?;
+                }
+                if rows.len() > 1 && !quiet {
+                    writeln!(writer, "==> {} <==", row.path().display())?;
+                }
+                info::write_table(&mut writer, std::slice::from_ref(row), quiet)?;
+            }
+        }
         OutputFormat::Json => json::write_value(io::stdout().lock(), &file_info_rows(rows))?,
         OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &file_info_rows(rows))?,
         OutputFormat::Csv => info::write_csv(io::stdout().lock(), rows, !quiet)?,
     }
+    Ok(())
+}
+
+pub fn write_counts(quiet: bool, is_multi_source: bool, counts: &CountResult) -> Result<()> {
+    let mut writer = io::stdout().lock();
+
+    for entry in &counts.entries {
+        if quiet || !is_multi_source {
+            writeln!(writer, "{}", entry.rows)?;
+        } else {
+            writeln!(writer, "{}: {}", entry.path.display(), entry.rows)?;
+        }
+    }
+
+    if is_multi_source && !quiet {
+        writeln!(writer, "Total: {}", counts.total_rows)?;
+    }
+
     Ok(())
 }
 
