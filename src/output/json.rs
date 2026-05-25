@@ -3,70 +3,60 @@
 use crate::engine::parquet::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
+use arrow::json::writer::{JsonArray, LineDelimited};
+use arrow::json::WriterBuilder;
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
+use std::io::{self, Write};
 
-/// Convert a record batch to JSON rows
-fn batch_to_json_rows(batch: &RecordBatch) -> Result<Vec<Map<String, Value>>> {
-    let schema = batch.schema();
-    let mut rows = Vec::with_capacity(batch.num_rows());
+fn encode_json_array(batches: &[RecordBatch]) -> Result<Vec<u8>> {
+    let mut writer = WriterBuilder::new()
+        .with_explicit_nulls(true)
+        .build::<_, JsonArray>(Vec::new());
 
-    for row_idx in 0..batch.num_rows() {
-        let mut row = Map::new();
-        for (col_idx, field) in schema.fields().iter().enumerate() {
-            let col = batch.column(col_idx);
-            let value_str = arrow::util::display::array_value_to_string(col, row_idx)?;
-
-            // Try to parse as number or bool, otherwise keep as string
-            let value = if value_str == "null" || value_str.is_empty() {
-                Value::Null
-            } else if let Ok(n) = value_str.parse::<i64>() {
-                Value::Number(n.into())
-            } else if let Ok(n) = value_str.parse::<f64>() {
-                serde_json::Number::from_f64(n)
-                    .map_or_else(|| Value::String(value_str.clone()), Value::Number)
-            } else if value_str == "true" {
-                Value::Bool(true)
-            } else if value_str == "false" {
-                Value::Bool(false)
-            } else {
-                Value::String(value_str)
-            };
-
-            row.insert(field.name().clone(), value);
-        }
-        rows.push(row);
+    for batch in batches {
+        writer.write(batch)?;
     }
+    writer.finish()?;
 
-    Ok(rows)
+    Ok(writer.into_inner())
+}
+
+pub fn write_json<W: Write>(mut writer: W, batches: &[RecordBatch]) -> Result<()> {
+    let json = encode_json_array(batches)?;
+    let value: Value = serde_json::from_slice(&json)?;
+    serde_json::to_writer_pretty(&mut writer, &value)?;
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn write_jsonl<W: Write>(writer: W, batches: &[RecordBatch]) -> Result<()> {
+    let mut writer = WriterBuilder::new()
+        .with_explicit_nulls(true)
+        .build::<_, LineDelimited>(writer);
+
+    for batch in batches {
+        writer.write(batch)?;
+    }
+    writer.finish()?;
+    writer.into_inner().flush()?;
+    Ok(())
 }
 
 /// Print record batches as a JSON array
 pub fn print_batches(batches: &[RecordBatch]) -> Result<()> {
-    if batches.is_empty() {
-        println!("[]");
-        return Ok(());
-    }
-
-    let mut all_rows = Vec::new();
-    for batch in batches {
-        all_rows.extend(batch_to_json_rows(batch)?);
-    }
-
-    let json = serde_json::to_string_pretty(&all_rows)?;
-    println!("{json}");
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    write_json(&mut handle, batches)?;
+    writeln!(handle)?;
     Ok(())
 }
 
 /// Print record batches as JSONL (one JSON object per line)
 pub fn print_batches_jsonl(batches: &[RecordBatch]) -> Result<()> {
-    for batch in batches {
-        for row in batch_to_json_rows(batch)? {
-            let json = serde_json::to_string(&row)?;
-            println!("{json}");
-        }
-    }
-    Ok(())
+    let stdout = io::stdout();
+    let handle = stdout.lock();
+    write_jsonl(handle, batches)
 }
 
 /// Print a single value as JSON
@@ -97,5 +87,27 @@ pub fn print_schema(columns: &[ColumnInfo]) -> Result<()> {
 
     let json = serde_json::to_string_pretty(&cols)?;
     println!("{json}");
+    Ok(())
+}
+
+/// Print schema as JSONL (one JSON object per line)
+pub fn print_schema_jsonl(columns: &[ColumnInfo]) -> Result<()> {
+    #[derive(Serialize)]
+    struct Column {
+        name: String,
+        #[serde(rename = "type")]
+        dtype: String,
+        nullable: bool,
+    }
+
+    for column in columns {
+        let row = Column {
+            name: column.name.clone(),
+            dtype: column.type_name.clone(),
+            nullable: column.nullable,
+        };
+        println!("{}", serde_json::to_string(&row)?);
+    }
+
     Ok(())
 }

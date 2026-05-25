@@ -24,13 +24,12 @@ Commands:
   info      File metadata (row groups, compression, size)
 ```
 
-### Global Options
+### Common command options
 
-```
--o, --output <FORMAT>   Output format: table, json, jsonl, csv [default: table]
--n, --rows <N>          Number of rows for head/tail [default: 10]
--q, --quiet             Suppress headers and formatting
-```
+- `schema`, `head`, `tail`, `stats`, and `info` support `-o, --output <table|json|jsonl|csv>`
+- `head` and `tail` support `-n, --rows <N>`
+- `schema`, `head`, `tail`, `count`, `stats`, and `info` support `-q, --quiet`
+- `convert` infers the output format from the destination file extension: `.csv`, `.json`, or `.jsonl`
 
 ## Examples
 
@@ -118,14 +117,17 @@ $ pq merge part1.parquet part2.parquet -o combined.parquet
 
 ### Output formats
 
-All commands support multiple output formats:
+Read-oriented commands support multiple output formats:
 
 ```bash
 $ pq head data.parquet --output table   # Pretty table (default)
 $ pq head data.parquet --output json    # JSON array
 $ pq head data.parquet --output jsonl   # JSON Lines
 $ pq head data.parquet --output csv     # CSV
+$ pq schema data.parquet --output jsonl # One JSON object per schema column
 ```
+
+`count` prints plain text counts, `convert` writes the format implied by the output file extension, and `merge` writes a Parquet file.
 
 ### Glob support
 
@@ -137,7 +139,7 @@ $ pq schema *.parquet
 ## Features
 
 - Sub-100ms startup time
-- Streams data for files larger than RAM
+- Batch-oriented reads and conversions
 - Multiple output formats
 - Glob pattern support
 - Snappy compression for merge output
