@@ -5,6 +5,7 @@ use crate::dataset::Dataset;
 use crate::error::{PqError, ResultExt};
 use crate::Result;
 use comfy_table::{Cell, Table};
+use parquet::data_type::Int96;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::file::statistics::Statistics;
 use serde::Serialize;
@@ -15,8 +16,52 @@ struct ColumnStats {
     name: String,
     physical_type: String,
     null_count: u64,
-    min: Option<String>,
-    max: Option<String>,
+    min: Option<StatValue>,
+    max: Option<StatValue>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum StatValue {
+    Int32(i32),
+    Int64(i64),
+    Float(f32),
+    Double(f64),
+    ByteArray(Vec<u8>),
+    Boolean(bool),
+    FixedLenByteArray(Vec<u8>),
+    Int96(Int96),
+}
+
+impl StatValue {
+    fn display(&self) -> String {
+        match self {
+            Self::Int32(value) => value.to_string(),
+            Self::Int64(value) => value.to_string(),
+            Self::Float(value) => value.to_string(),
+            Self::Double(value) => value.to_string(),
+            Self::ByteArray(value) | Self::FixedLenByteArray(value) => {
+                String::from_utf8_lossy(value).to_string()
+            }
+            Self::Boolean(value) => value.to_string(),
+            Self::Int96(value) => format!("{value:?}"),
+        }
+    }
+
+    fn partial_cmp_value(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Int32(left), Self::Int32(right)) => left.partial_cmp(right),
+            (Self::Int64(left), Self::Int64(right)) => left.partial_cmp(right),
+            (Self::Float(left), Self::Float(right)) => left.partial_cmp(right),
+            (Self::Double(left), Self::Double(right)) => left.partial_cmp(right),
+            (Self::ByteArray(left), Self::ByteArray(right)) => left.partial_cmp(right),
+            (Self::Boolean(left), Self::Boolean(right)) => left.partial_cmp(right),
+            (Self::FixedLenByteArray(left), Self::FixedLenByteArray(right)) => {
+                left.partial_cmp(right)
+            }
+            (Self::Int96(left), Self::Int96(right)) => left.partial_cmp(right),
+            _ => None,
+        }
+    }
 }
 
 /// Serializable representation for JSON/CSV output
@@ -98,70 +143,82 @@ pub fn run(args: StatsArgs) -> Result<()> {
 fn update_min_max(cs: &mut ColumnStats, stats: &Statistics) {
     match stats {
         Statistics::Int32(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(min.to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(max.to_string());
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Int32));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Int32));
         }
         Statistics::Int64(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(min.to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(max.to_string());
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Int64));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Int64));
         }
         Statistics::Float(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(min.to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(max.to_string());
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Float));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Float));
         }
         Statistics::Double(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(min.to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(max.to_string());
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Double));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Double));
         }
         Statistics::ByteArray(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(String::from_utf8_lossy(min.data()).to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(String::from_utf8_lossy(max.data()).to_string());
-            }
+            merge_min(
+                &mut cs.min,
+                s.min_opt()
+                    .map(|min| StatValue::ByteArray(min.data().to_vec())),
+            );
+            merge_max(
+                &mut cs.max,
+                s.max_opt()
+                    .map(|max| StatValue::ByteArray(max.data().to_vec())),
+            );
         }
         Statistics::Boolean(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(min.to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(max.to_string());
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Boolean));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Boolean));
         }
         Statistics::FixedLenByteArray(s) => {
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(String::from_utf8_lossy(min.data()).to_string());
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(String::from_utf8_lossy(max.data()).to_string());
-            }
+            merge_min(
+                &mut cs.min,
+                s.min_opt()
+                    .map(|min| StatValue::FixedLenByteArray(min.data().to_vec())),
+            );
+            merge_max(
+                &mut cs.max,
+                s.max_opt()
+                    .map(|max| StatValue::FixedLenByteArray(max.data().to_vec())),
+            );
         }
         Statistics::Int96(s) => {
-            // Int96 is a deprecated type used for timestamps in older Parquet files
-            if let Some(min) = s.min_opt() {
-                cs.min = Some(format!("{min:?}"));
-            }
-            if let Some(max) = s.max_opt() {
-                cs.max = Some(format!("{max:?}"));
-            }
+            merge_min(&mut cs.min, s.min_opt().copied().map(StatValue::Int96));
+            merge_max(&mut cs.max, s.max_opt().copied().map(StatValue::Int96));
         }
+    }
+}
+
+fn merge_min(current: &mut Option<StatValue>, candidate: Option<StatValue>) {
+    merge_bound(current, candidate, |ordering| ordering.is_lt());
+}
+
+fn merge_max(current: &mut Option<StatValue>, candidate: Option<StatValue>) {
+    merge_bound(current, candidate, |ordering| ordering.is_gt());
+}
+
+fn merge_bound(
+    current: &mut Option<StatValue>,
+    candidate: Option<StatValue>,
+    should_replace: impl Fn(std::cmp::Ordering) -> bool,
+) {
+    let Some(candidate) = candidate else {
+        return;
+    };
+
+    let replace = match current.as_ref() {
+        None => true,
+        Some(existing) => candidate
+            .partial_cmp_value(existing)
+            .is_some_and(should_replace),
+    };
+
+    if replace {
+        *current = Some(candidate);
     }
 }
 
@@ -178,8 +235,16 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) -> Res
                     Cell::new(&s.name),
                     Cell::new(&s.physical_type),
                     Cell::new(s.null_count),
-                    Cell::new(s.min.as_deref().unwrap_or("N/A")),
-                    Cell::new(s.max.as_deref().unwrap_or("N/A")),
+                    Cell::new(
+                        s.min
+                            .as_ref()
+                            .map_or_else(|| "N/A".to_string(), StatValue::display),
+                    ),
+                    Cell::new(
+                        s.max
+                            .as_ref()
+                            .map_or_else(|| "N/A".to_string(), StatValue::display),
+                    ),
                 ]);
             }
             println!("{tbl}");
@@ -191,8 +256,8 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) -> Res
                     column: s.name.clone(),
                     dtype: s.physical_type.clone(),
                     null_count: s.null_count,
-                    min: s.min.clone(),
-                    max: s.max.clone(),
+                    min: s.min.as_ref().map(StatValue::display),
+                    max: s.max.as_ref().map(StatValue::display),
                 })
                 .collect();
             let json = serde_json::to_string_pretty(&rows)?;
@@ -204,8 +269,8 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) -> Res
                     column: s.name.clone(),
                     dtype: s.physical_type.clone(),
                     null_count: s.null_count,
-                    min: s.min.clone(),
-                    max: s.max.clone(),
+                    min: s.min.as_ref().map(StatValue::display),
+                    max: s.max.as_ref().map(StatValue::display),
                 };
                 let json = serde_json::to_string(&row)?;
                 println!("{json}");
@@ -221,8 +286,8 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) -> Res
                     escape_csv(&s.name),
                     escape_csv(&s.physical_type),
                     s.null_count,
-                    escape_csv(s.min.as_deref().unwrap_or("")),
-                    escape_csv(s.max.as_deref().unwrap_or(""))
+                    escape_csv(&s.min.as_ref().map_or_else(String::new, StatValue::display)),
+                    escape_csv(&s.max.as_ref().map_or_else(String::new, StatValue::display))
                 );
             }
         }

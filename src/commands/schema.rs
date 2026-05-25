@@ -19,9 +19,8 @@ pub fn run(args: SchemaArgs) -> Result<()> {
             crate::cli::args::OutputFormat::Table => {
                 table::print_schema_table(&columns, args.quiet)
             }
-            crate::cli::args::OutputFormat::Json | crate::cli::args::OutputFormat::Jsonl => {
-                json::print_schema(&columns)?
-            }
+            crate::cli::args::OutputFormat::Json => json::print_schema(&columns)?,
+            crate::cli::args::OutputFormat::Jsonl => json::print_schema_jsonl(&columns)?,
             crate::cli::args::OutputFormat::Csv => csv::print_schema(&columns, !args.quiet),
         }
     }
