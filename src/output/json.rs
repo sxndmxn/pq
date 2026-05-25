@@ -1,6 +1,5 @@
 //! JSON and JSONL output formatting
 
-use crate::engine::parquet::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use arrow::json::writer::{JsonArray, LineDelimited};
@@ -49,53 +48,15 @@ pub fn print_batches_jsonl(batches: &[RecordBatch]) -> Result<()> {
 }
 
 /// Print a single value as JSON
-pub fn print_value<T: Serialize>(value: &T) -> Result<()> {
+pub fn print_value<T: Serialize + ?Sized>(value: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(value)?;
     println!("{json}");
     Ok(())
 }
 
-/// Print schema as JSON array
-pub fn print_schema(columns: &[ColumnInfo]) -> Result<()> {
-    #[derive(Serialize)]
-    struct Column {
-        name: String,
-        #[serde(rename = "type")]
-        dtype: String,
-        nullable: bool,
-    }
-
-    let cols: Vec<_> = columns
-        .iter()
-        .map(|column| Column {
-            name: column.name.clone(),
-            dtype: column.type_name.clone(),
-            nullable: column.nullable,
-        })
-        .collect();
-
-    let json = serde_json::to_string_pretty(&cols)?;
-    println!("{json}");
-    Ok(())
-}
-
-/// Print schema as JSONL (one JSON object per line)
-pub fn print_schema_jsonl(columns: &[ColumnInfo]) -> Result<()> {
-    #[derive(Serialize)]
-    struct Column {
-        name: String,
-        #[serde(rename = "type")]
-        dtype: String,
-        nullable: bool,
-    }
-
-    for column in columns {
-        let row = Column {
-            name: column.name.clone(),
-            dtype: column.type_name.clone(),
-            nullable: column.nullable,
-        };
-        println!("{}", serde_json::to_string(&row)?);
+pub fn print_json_lines<T: Serialize>(values: &[T]) -> Result<()> {
+    for value in values {
+        println!("{}", serde_json::to_string(value)?);
     }
 
     Ok(())

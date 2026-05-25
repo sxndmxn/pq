@@ -1,2 +1,2 @@
 pub mod parquet;
-pub mod scan;
+pub mod stats;

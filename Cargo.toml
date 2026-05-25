@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "A jq-like CLI for Parquet files. Fast startup, pretty output, sensible defaults."
 license = "MIT"
-repository = "https://github.com/example/pq"
+repository = "https://github.com/sxndmxn/pq"
 keywords = ["parquet", "cli", "data", "arrow"]
 categories = ["command-line-utilities", "data-structures"]
 

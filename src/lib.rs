@@ -1,10 +1,17 @@
-pub mod cli;
-pub mod commands;
+mod cli;
+mod commands;
 pub mod dataset;
 pub mod engine;
-pub mod error;
-pub mod output;
-pub mod plan;
+mod error;
+pub mod model;
+mod output;
 
 pub use anyhow::Result;
+pub use cli::args::{Cli, Command, OutputFormat};
+pub use dataset::{Dataset, DatasetSource};
 pub use error::PqError;
+pub use model::{ColumnInfo, ColumnStats, FileInfo};
+
+pub fn run(command: Command) -> Result<()> {
+    commands::run(command)
+}

@@ -1,6 +1,5 @@
 //! CSV output formatting
 
-use crate::engine::parquet::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use arrow::csv::WriterBuilder;
@@ -43,14 +42,4 @@ pub fn write_batches_to_file(batches: &[RecordBatch], path: &std::path::Path) ->
     }
 
     Ok(())
-}
-
-/// Print schema as CSV
-pub fn print_schema(columns: &[ColumnInfo], include_header: bool) {
-    if include_header {
-        println!("column,type,nullable");
-    }
-    for column in columns {
-        println!("{},{},{}", column.name, column.type_name, column.nullable);
-    }
 }
