@@ -20,12 +20,12 @@ fn fixture_path() -> String {
     format!("{}/tests/fixtures/test.parquet", env!("CARGO_MANIFEST_DIR"))
 }
 
-fn temp_path(name: &str, extension: &str) -> PathBuf {
+fn temp_path(name: &str, extension: &str) -> Result<PathBuf> {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time should be after unix epoch")
+        .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
         .as_nanos();
-    std::env::temp_dir().join(format!("pq_{name}_{unique}.{extension}"))
+    Ok(std::env::temp_dir().join(format!("pq_{name}_{unique}.{extension}")))
 }
 
 fn write_parquet(
@@ -265,9 +265,9 @@ fn test_convert_json_preserves_types() -> Result<()> {
         ],
     )?;
 
-    let input_path = temp_path("typed_input", "parquet");
-    let json_path = temp_path("typed_output", "json");
-    let jsonl_path = temp_path("typed_output", "jsonl");
+    let input_path = temp_path("typed_input", "parquet")?;
+    let json_path = temp_path("typed_output", "json")?;
+    let jsonl_path = temp_path("typed_output", "jsonl")?;
     write_parquet(&input_path, schema, &[batch], None)?;
 
     let json_output = pq()
@@ -280,7 +280,9 @@ fn test_convert_json_preserves_types() -> Result<()> {
     assert!(json_output.status.success());
 
     let rows: serde_json::Value = serde_json::from_str(&fs::read_to_string(&json_path)?)?;
-    let rows = rows.as_array().expect("json output should be an array");
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("json output should be an array"))?;
     assert_eq!(
         rows[0]["code"],
         serde_json::Value::String("0012".to_string())
@@ -333,7 +335,7 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
         Arc::clone(&schema),
         vec![Arc::new(Int64Array::from(vec![5, 10, 1, 3])) as ArrayRef],
     )?;
-    let input_path = temp_path("stats_groups", "parquet");
+    let input_path = temp_path("stats_groups", "parquet")?;
     write_parquet(&input_path, schema, &[batch], Some(2))?;
 
     let output = pq()
