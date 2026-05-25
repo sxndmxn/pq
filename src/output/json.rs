@@ -48,7 +48,7 @@ pub fn print_batches_jsonl(batches: &[RecordBatch]) -> Result<()> {
 }
 
 /// Print a single value as JSON
-pub fn print_value<T: Serialize>(value: &T) -> Result<()> {
+pub fn print_value<T: Serialize + ?Sized>(value: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(value)?;
     println!("{json}");
     Ok(())

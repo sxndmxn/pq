@@ -6,6 +6,7 @@ use crate::error::PqError;
 use crate::output::csv as csv_output;
 use crate::output::json as json_output;
 use crate::Result;
+use arrow::array::RecordBatch;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
