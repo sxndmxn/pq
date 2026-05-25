@@ -1,13 +1,12 @@
 //! File metadata command
 
-use crate::error::{PqError, ResultExt};
+use crate::cli::args::{InfoArgs, OutputFormat};
+use crate::dataset::Dataset;
 use crate::output::table;
-use crate::OutputFormat;
-use anyhow::Result;
+use crate::{engine, Result};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde::Serialize;
-use std::fs::{self, File};
-use std::path::PathBuf;
+use std::fs::File;
 
 #[derive(Serialize)]
 struct FileInfo {
@@ -21,16 +20,18 @@ struct FileInfo {
     version: i32,
 }
 
-pub fn run(paths: &[PathBuf], output: OutputFormat, quiet: bool) -> Result<()> {
+pub fn run(args: InfoArgs) -> Result<()> {
     let mut all_info = Vec::new();
+    let dataset = Dataset::from_inputs(args.inputs)?;
 
-    for path in paths {
-        if paths.len() > 1 && !quiet && matches!(output, OutputFormat::Table) {
-            println!("==> {} <==", path.display());
+    for source in dataset.sources() {
+        if dataset.is_multi_source() && !args.quiet && matches!(args.output, OutputFormat::Table) {
+            println!("==> {} <==", source.path().display());
         }
 
-        let file = File::open(path).with_path_context(path)?;
-        let file_size = fs::metadata(path).with_path_context(path)?.len();
+        let path = source.path();
+        let file = File::open(path)?;
+        let file_size = engine::parquet::file_size(path)?;
         let reader = SerializedFileReader::new(file).map_err(|e| {
             let msg = e.to_string().to_lowercase();
             if msg.contains("magic") || msg.contains("not a valid parquet") {
@@ -73,7 +74,7 @@ pub fn run(paths: &[PathBuf], output: OutputFormat, quiet: bool) -> Result<()> {
             version,
         };
 
-        match output {
+        match args.output {
             OutputFormat::Table => {
                 let rows = [
                     ("File", path.display().to_string()),
@@ -85,33 +86,27 @@ pub fn run(paths: &[PathBuf], output: OutputFormat, quiet: bool) -> Result<()> {
                     ("Created By", created_by),
                     ("Version", version.to_string()),
                 ];
-                let rows_ref: Vec<(&str, String)> =
-                    rows.iter().map(|(k, v)| (*k, v.clone())).collect();
-                table::print_key_value(&rows_ref, quiet);
+                let rows_ref: Vec<(&str, String)> = rows.into_iter().collect();
+                table::print_key_value(&rows_ref, args.quiet);
             }
             OutputFormat::Json | OutputFormat::Csv => {
                 all_info.push(info);
             }
             OutputFormat::Jsonl => {
-                // Safe: FileInfo is always serializable
-                #[allow(clippy::expect_used)]
-                let json = serde_json::to_string(&info).expect("FileInfo is always serializable");
+                let json = serde_json::to_string(&info)?;
                 println!("{json}");
             }
         }
     }
 
     // Print collected JSON/CSV output
-    match output {
+    match args.output {
         OutputFormat::Json => {
-            // Safe: Vec<FileInfo> is always serializable
-            #[allow(clippy::expect_used)]
-            let json =
-                serde_json::to_string_pretty(&all_info).expect("FileInfo is always serializable");
+            let json = serde_json::to_string_pretty(&all_info)?;
             println!("{json}");
         }
         OutputFormat::Csv if !all_info.is_empty() => {
-            print_info_csv(&all_info, !quiet);
+            print_info_csv(&all_info, !args.quiet);
         }
         _ => {}
     }

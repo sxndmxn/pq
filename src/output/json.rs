@@ -69,7 +69,6 @@ pub fn print_batches_jsonl(batches: &[RecordBatch]) -> Result<()> {
 }
 
 /// Print a single value as JSON
-#[allow(dead_code)]
 pub fn print_value<T: Serialize>(value: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(value)?;
     println!("{json}");
@@ -77,7 +76,7 @@ pub fn print_value<T: Serialize>(value: &T) -> Result<()> {
 }
 
 /// Print schema as JSON array
-pub fn print_schema(columns: &[(String, String, bool)]) {
+pub fn print_schema(columns: &[(String, String, bool)]) -> Result<()> {
     #[derive(Serialize)]
     struct Column {
         name: String,
@@ -95,8 +94,7 @@ pub fn print_schema(columns: &[(String, String, bool)]) {
         })
         .collect();
 
-    // Safe to use expect here as we control the input - it's always serializable
-    #[allow(clippy::expect_used)]
-    let json = serde_json::to_string_pretty(&cols).expect("schema is always serializable");
+    let json = serde_json::to_string_pretty(&cols)?;
     println!("{json}");
+    Ok(())
 }

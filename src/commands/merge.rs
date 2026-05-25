@@ -1,7 +1,10 @@
 //! File merging command
 
+use crate::cli::args::MergeArgs;
+use crate::dataset::Dataset;
 use crate::error::{PqError, ResultExt};
-use anyhow::{bail, Result};
+use crate::Result;
+use anyhow::bail;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
@@ -11,7 +14,17 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub fn run(paths: &[PathBuf], output: &Path) -> Result<()> {
+pub fn run(args: MergeArgs) -> Result<()> {
+    let dataset = Dataset::from_inputs(args.inputs)?;
+    let paths: Vec<PathBuf> = dataset
+        .sources()
+        .iter()
+        .map(|source| source.path().to_path_buf())
+        .collect();
+    run_with_paths(&paths, &args.output)
+}
+
+fn run_with_paths(paths: &[PathBuf], output: &Path) -> Result<()> {
     if paths.is_empty() {
         bail!("No input files specified");
     }

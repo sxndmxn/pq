@@ -24,12 +24,6 @@ pub enum PqError {
     #[error("No files matched pattern: {pattern}")]
     NoFilesMatched { pattern: String },
 
-    #[error("Invalid SQL query: {details}")]
-    InvalidSql { details: String },
-
-    #[error("Query execution failed: {details}")]
-    QueryFailed { details: String },
-
     #[error("Schema mismatch between files:\n  {file1}\n  {file2}\n  {details}")]
     SchemaMismatch {
         file1: String,
@@ -40,17 +34,8 @@ pub enum PqError {
     #[error("Unsupported format: {format}\n  Supported formats: {supported}")]
     UnsupportedFormat { format: String, supported: String },
 
-    #[error("Column not found: {column}\n  Available columns: {available}")]
-    ColumnNotFound { column: String, available: String },
-
     #[error("Path is a directory, not a file: {path}")]
     IsDirectory { path: String },
-
-    #[error("Empty file: {path}")]
-    EmptyFile { path: String },
-
-    #[error("{0}")]
-    Other(String),
 }
 
 impl PqError {
@@ -98,30 +83,9 @@ impl PqError {
         }
     }
 
-    /// Create an invalid SQL error
-    pub fn invalid_sql(err: impl std::fmt::Display) -> Self {
-        Self::InvalidSql {
-            details: simplify_sql_error(&err.to_string()),
-        }
-    }
-
-    /// Create a query execution error
-    pub fn query_failed(err: impl std::fmt::Display) -> Self {
-        Self::QueryFailed {
-            details: simplify_sql_error(&err.to_string()),
-        }
-    }
-
     /// Create an "is directory" error
     pub fn is_directory(path: &Path) -> Self {
         Self::IsDirectory {
-            path: path.display().to_string(),
-        }
-    }
-
-    /// Create an empty file error
-    pub fn empty_file(path: &Path) -> Self {
-        Self::EmptyFile {
             path: path.display().to_string(),
         }
     }
@@ -147,26 +111,6 @@ fn simplify_parquet_error(msg: &str) -> String {
     }
 
     // Return original if no simplification available
-    msg.to_string()
-}
-
-/// Simplify SQL/DataFusion error messages
-fn simplify_sql_error(msg: &str) -> String {
-    // Strip Arrow/DataFusion internal prefixes
-    let msg = msg
-        .trim_start_matches("Arrow error: ")
-        .trim_start_matches("External error: ")
-        .trim_start_matches("Execution error: ");
-
-    // Handle common patterns
-    if msg.contains("table") && msg.contains("not found") {
-        return msg.to_string();
-    }
-
-    if msg.contains("column") && msg.contains("not found") {
-        return msg.to_string();
-    }
-
     msg.to_string()
 }
 

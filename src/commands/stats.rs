@@ -1,14 +1,14 @@
 //! Column statistics command
 
+use crate::cli::args::{OutputFormat, StatsArgs};
+use crate::dataset::Dataset;
 use crate::error::{PqError, ResultExt};
-use crate::OutputFormat;
-use anyhow::Result;
+use crate::Result;
 use comfy_table::{Cell, Table};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::file::statistics::Statistics;
 use serde::Serialize;
 use std::fs::File;
-use std::path::PathBuf;
 
 /// Column statistics data
 struct ColumnStats {
@@ -31,13 +31,13 @@ struct StatRow {
 }
 
 pub fn run(
-    paths: &[PathBuf],
-    column_filter: Option<&str>,
-    output: OutputFormat,
-    quiet: bool,
+    args: StatsArgs,
 ) -> Result<()> {
-    for path in paths {
-        if paths.len() > 1 && !quiet {
+    let dataset = Dataset::from_inputs(args.inputs)?;
+
+    for source in dataset.sources() {
+        let path = source.path();
+        if dataset.is_multi_source() && !args.quiet {
             println!("==> {} <==", path.display());
         }
 
@@ -81,7 +81,7 @@ pub fn run(
         }
 
         // Filter by column name if specified
-        let stats_to_show: Vec<_> = if let Some(col_name) = column_filter {
+        let stats_to_show: Vec<_> = if let Some(col_name) = args.column.as_deref() {
             column_stats
                 .into_iter()
                 .filter(|s| s.name == col_name)
@@ -91,7 +91,7 @@ pub fn run(
         };
 
         // Output based on format
-        output_stats(&stats_to_show, output, quiet);
+        output_stats(&stats_to_show, args.output, args.quiet)?;
     }
     Ok(())
 }
@@ -168,7 +168,7 @@ fn update_min_max(cs: &mut ColumnStats, stats: &Statistics) {
 }
 
 /// Output statistics in the requested format
-fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) {
+fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) -> Result<()> {
     match output {
         OutputFormat::Table => {
             let mut tbl = Table::new();
@@ -197,9 +197,7 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) {
                     max: s.max.clone(),
                 })
                 .collect();
-            // Safe: StatRow is always serializable
-            #[allow(clippy::expect_used)]
-            let json = serde_json::to_string_pretty(&rows).expect("StatRow is always serializable");
+            let json = serde_json::to_string_pretty(&rows)?;
             println!("{json}");
         }
         OutputFormat::Jsonl => {
@@ -211,9 +209,7 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) {
                     min: s.min.clone(),
                     max: s.max.clone(),
                 };
-                // Safe: StatRow is always serializable
-                #[allow(clippy::expect_used)]
-                let json = serde_json::to_string(&row).expect("StatRow is always serializable");
+                let json = serde_json::to_string(&row)?;
                 println!("{json}");
             }
         }
@@ -233,6 +229,7 @@ fn output_stats(stats: &[ColumnStats], output: OutputFormat, quiet: bool) {
             }
         }
     }
+    Ok(())
 }
 
 /// Escape a string for CSV output

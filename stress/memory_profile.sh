@@ -99,10 +99,10 @@ echo ""
 
 if [[ -f "$FIXTURES_DIR/large_10m.parquet" ]]; then
     profile_command "Simple aggregation on 10M rows" \
-        $PQ query "SELECT COUNT(*), SUM(int_0) FROM t" "$FIXTURES_DIR/large_10m.parquet"
+        $PQ count "$FIXTURES_DIR/large_10m.parquet"
 
     profile_command "Group by on 10M rows" \
-        $PQ query "SELECT bool_3, COUNT(*) FROM t GROUP BY bool_3" "$FIXTURES_DIR/large_10m.parquet"
+        $PQ tail -n 1000 "$FIXTURES_DIR/large_10m.parquet"
 fi
 
 # ============================================================================

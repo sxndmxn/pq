@@ -2,6 +2,7 @@
 //!
 //! Run all tests: cargo test --test stress
 //! Run ignored (heavy) tests: cargo test --test stress -- --ignored --test-threads=1
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -775,38 +776,30 @@ fn rapid_sequential_invocations() {
 }
 
 // ============================================================================
-// Query Stress Tests
+// Large Scan Stress Tests
 // ============================================================================
 
 #[test]
 #[ignore]
-fn query_aggregation_large() {
+fn count_large() {
     let path = generate_fixture(
         "large_10m.parquet",
         &["--rows", "10000000", "--cols", "20", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&[
-        "query",
-        "SELECT COUNT(*), SUM(int_0) FROM t",
-        path.to_str().unwrap(),
-    ]);
+    let output = run_pq_success(&["count", path.to_str().unwrap()]);
     assert!(output.contains("10000000"));
 }
 
 #[test]
 #[ignore]
-fn query_group_by_large() {
+fn tail_large() {
     let path = generate_fixture(
         "large_10m.parquet",
         &["--rows", "10000000", "--cols", "20", "--profile", "mixed"],
     );
 
-    let output = run_pq_success(&[
-        "query",
-        "SELECT bool_3, COUNT(*) FROM t GROUP BY bool_3",
-        path.to_str().unwrap(),
-    ]);
+    let output = run_pq_success(&["tail", "-n", "100", path.to_str().unwrap()]);
     assert!(!output.is_empty());
 }
 
