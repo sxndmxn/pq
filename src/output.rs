@@ -12,6 +12,7 @@ pub mod schema;
 pub mod stats;
 pub mod table;
 
+#[derive(Debug)]
 enum FileOutputFormat {
     Csv,
     Json,
@@ -157,7 +158,11 @@ mod tests {
     #[test]
     fn rejects_unknown_output_extension() {
         let path = Path::new("/tmp/output.unknown");
-        let err = file_output_format(path).expect_err("unknown extensions should fail");
-        assert!(err.to_string().contains("Unsupported format"));
+        let result = file_output_format(path);
+        assert!(result.is_err());
+        assert!(result
+            .as_ref()
+            .err()
+            .is_some_and(|err| err.to_string().contains("Unsupported format")));
     }
 }
