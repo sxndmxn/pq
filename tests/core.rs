@@ -75,6 +75,21 @@ fn column_stats_come_from_shared_engine() -> Result<()> {
 }
 
 #[test]
+fn library_api_exposes_typed_schema_results() -> Result<()> {
+    let dataset = pq::dataset_from_inputs(vec![fixture_path()])?;
+    let schema = pq::schema(&dataset)?;
+
+    assert_eq!(schema.len(), 1);
+    assert_eq!(schema[0].columns[0].name, "id");
+    assert_eq!(
+        schema[0].columns[0].column_type.physical,
+        pq::PhysicalType::Int64
+    );
+
+    Ok(())
+}
+
+#[test]
 fn merge_comes_from_shared_engine() -> Result<()> {
     let schema = Arc::new(Schema::new(vec![Field::new(
         "value",

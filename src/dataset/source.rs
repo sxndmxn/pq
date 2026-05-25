@@ -1,5 +1,6 @@
 use crate::error::PqError;
 use crate::Result;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const MAX_GLOB_FILES: usize = 10_000;
@@ -21,18 +22,17 @@ impl Dataset {
         }
 
         let mut sources = Vec::new();
+        let mut seen_glob_paths = BTreeSet::new();
 
         for input in inputs {
             if is_glob_pattern(&input) {
-                expand_glob_input(&input, &mut sources)?;
+                expand_glob_input(&input, &mut sources, &mut seen_glob_paths)?;
             } else {
                 validate_file_path(&input)?;
+                seen_glob_paths.insert(input.clone());
                 sources.push(DatasetSource { path: input });
             }
         }
-
-        sources.sort();
-        sources.dedup();
 
         if sources.is_empty() {
             return Err(PqError::NoInputFiles.into());
@@ -62,7 +62,11 @@ impl DatasetSource {
     }
 }
 
-fn expand_glob_input(input: &Path, sources: &mut Vec<DatasetSource>) -> Result<()> {
+fn expand_glob_input(
+    input: &Path,
+    sources: &mut Vec<DatasetSource>,
+    seen_glob_paths: &mut BTreeSet<PathBuf>,
+) -> Result<()> {
     let pattern = input.to_string_lossy().into_owned();
     let mut matches = Vec::new();
 
@@ -84,7 +88,12 @@ fn expand_glob_input(input: &Path, sources: &mut Vec<DatasetSource>) -> Result<(
         return Err(PqError::NoFilesMatched { pattern }.into());
     }
 
-    sources.extend(matches);
+    matches.sort();
+    for source in matches {
+        if seen_glob_paths.insert(source.path.clone()) {
+            sources.push(source);
+        }
+    }
     Ok(())
 }
 
@@ -103,4 +112,42 @@ fn validate_file_path(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> Result<PathBuf> {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
+            .as_nanos();
+        let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("pq_dataset_{unique}_{counter}"));
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    #[test]
+    fn deduplicates_overlapping_explicit_and_glob_inputs() -> Result<()> {
+        let dir = temp_dir()?;
+        let file = dir.join("sample.parquet");
+        fs::write(&file, b"PAR1")?;
+        let glob = dir.join("*.parquet");
+
+        let dataset = Dataset::from_inputs(vec![file.clone(), glob])?;
+
+        assert_eq!(dataset.sources().len(), 1);
+        assert_eq!(dataset.sources()[0].path(), file.as_path());
+
+        fs::remove_file(file)?;
+        fs::remove_dir(dir)?;
+        Ok(())
+    }
 }

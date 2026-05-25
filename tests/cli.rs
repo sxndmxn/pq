@@ -91,9 +91,10 @@ fn test_schema_json() -> Result<()> {
         .args(["schema", &fixture_path(), "-o", "json"])
         .output()?;
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"name\""));
-    assert!(stdout.contains("\"type\""));
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows[0]["name"], serde_json::json!("id"));
+    assert_eq!(rows[0]["type"], serde_json::json!("INT64"));
+    assert_eq!(rows[0]["physical_type"], serde_json::json!("INT64"));
     Ok(())
 }
 
