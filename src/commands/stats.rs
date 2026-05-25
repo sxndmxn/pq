@@ -20,7 +20,7 @@ struct ColumnStats {
     max: Option<StatValue>,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 enum StatValue {
     Int32(i32),
     Int64(i64),
@@ -44,6 +44,22 @@ impl StatValue {
             }
             Self::Boolean(value) => value.to_string(),
             Self::Int96(value) => format!("{value:?}"),
+        }
+    }
+
+    fn partial_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Int32(left), Self::Int32(right)) => left.partial_cmp(right),
+            (Self::Int64(left), Self::Int64(right)) => left.partial_cmp(right),
+            (Self::Float(left), Self::Float(right)) => left.partial_cmp(right),
+            (Self::Double(left), Self::Double(right)) => left.partial_cmp(right),
+            (Self::ByteArray(left), Self::ByteArray(right)) => left.partial_cmp(right),
+            (Self::Boolean(left), Self::Boolean(right)) => left.partial_cmp(right),
+            (Self::FixedLenByteArray(left), Self::FixedLenByteArray(right)) => {
+                left.partial_cmp(right)
+            }
+            (Self::Int96(left), Self::Int96(right)) => left.partial_cmp(right),
+            _ => None,
         }
     }
 }
@@ -196,7 +212,9 @@ fn merge_bound(
 
     let replace = match current.as_ref() {
         None => true,
-        Some(existing) => candidate.partial_cmp(existing).is_some_and(should_replace),
+        Some(existing) => candidate
+            .partial_compare(existing)
+            .is_some_and(should_replace),
     };
 
     if replace {

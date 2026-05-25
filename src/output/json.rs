@@ -6,27 +6,18 @@ use arrow::array::RecordBatch;
 use arrow::json::writer::{JsonArray, LineDelimited};
 use arrow::json::WriterBuilder;
 use serde::Serialize;
-use serde_json::Value;
 use std::io::{self, Write};
 
-fn encode_json_array(batches: &[RecordBatch]) -> Result<Vec<u8>> {
+pub fn write_json<W: Write>(writer: W, batches: &[RecordBatch]) -> Result<()> {
     let mut writer = WriterBuilder::new()
         .with_explicit_nulls(true)
-        .build::<_, JsonArray>(Vec::new());
+        .build::<_, JsonArray>(writer);
 
     for batch in batches {
         writer.write(batch)?;
     }
     writer.finish()?;
-
-    Ok(writer.into_inner())
-}
-
-pub fn write_json<W: Write>(mut writer: W, batches: &[RecordBatch]) -> Result<()> {
-    let json = encode_json_array(batches)?;
-    let value: Value = serde_json::from_slice(&json)?;
-    serde_json::to_writer_pretty(&mut writer, &value)?;
-    writer.flush()?;
+    writer.into_inner().flush()?;
     Ok(())
 }
 
