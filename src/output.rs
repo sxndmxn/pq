@@ -191,7 +191,7 @@ fn stat_value_json(value: &StatValue) -> Value {
             Value::from(String::from_utf8_lossy(inner).to_string())
         }
         StatValue::Boolean(inner) => Value::from(*inner),
-        StatValue::Int96(inner) => Value::from(inner.clone()),
+        StatValue::Int96(inner) => Value::from(inner.as_str()),
     }
 }
 

@@ -370,23 +370,19 @@ pub enum StatValue {
     Int96(String),
 }
 
-impl StatValue {
-    pub fn display(&self) -> String {
-        match self {
-            Self::Int32(value) => value.to_string(),
-            Self::Int64(value) => value.to_string(),
-            Self::Float(value) => value.to_string(),
-            Self::Double(value) => value.to_string(),
-            Self::Binary(value) | Self::FixedLenBinary(value) => display_binary(value),
-            Self::Boolean(value) => value.to_string(),
-            Self::Int96(value) => value.clone(),
-        }
-    }
-}
-
 impl fmt::Display for StatValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.display())
+        match self {
+            Self::Int32(value) => write!(f, "{value}"),
+            Self::Int64(value) => write!(f, "{value}"),
+            Self::Float(value) => write!(f, "{value}"),
+            Self::Double(value) => write!(f, "{value}"),
+            Self::Binary(value) | Self::FixedLenBinary(value) => {
+                f.write_str(&display_binary(value))
+            }
+            Self::Boolean(value) => write!(f, "{value}"),
+            Self::Int96(value) => f.write_str(value),
+        }
     }
 }
 
