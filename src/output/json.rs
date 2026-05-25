@@ -17,7 +17,6 @@ pub fn write_json<W: Write>(writer: W, batches: &[RecordBatch]) -> Result<()> {
         writer.write(batch)?;
     }
     writer.finish()?;
-    writer.into_inner().flush()?;
     Ok(())
 }
 
@@ -30,7 +29,6 @@ pub fn write_jsonl<W: Write>(writer: W, batches: &[RecordBatch]) -> Result<()> {
         writer.write(batch)?;
     }
     writer.finish()?;
-    writer.into_inner().flush()?;
     Ok(())
 }
 

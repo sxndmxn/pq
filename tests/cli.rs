@@ -9,8 +9,11 @@ use parquet::file::properties::WriterProperties;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn pq() -> Command {
     Command::new(env!("CARGO_BIN_EXE_pq"))
@@ -25,7 +28,8 @@ fn temp_path(name: &str, extension: &str) -> Result<PathBuf> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
         .as_nanos();
-    Ok(std::env::temp_dir().join(format!("pq_{name}_{unique}.{extension}")))
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    Ok(std::env::temp_dir().join(format!("pq_{name}_{unique}_{counter}.{extension}")))
 }
 
 fn write_parquet(
