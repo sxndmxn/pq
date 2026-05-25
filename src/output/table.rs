@@ -4,9 +4,9 @@ use crate::model::ColumnInfo;
 use anyhow::Result;
 use arrow::array::RecordBatch;
 use comfy_table::{Cell, Table};
+use std::io::Write;
 
-/// Print record batches as a formatted table
-pub fn print_batches(batches: &[RecordBatch], quiet: bool) -> Result<()> {
+pub fn write_batches<W: Write>(mut writer: W, batches: &[RecordBatch], quiet: bool) -> Result<()> {
     if batches.is_empty() {
         return Ok(());
     }
@@ -15,7 +15,7 @@ pub fn print_batches(batches: &[RecordBatch], quiet: bool) -> Result<()> {
     let mut table = Table::new();
 
     if !quiet {
-        table.set_header(schema.fields().iter().map(|f| Cell::new(f.name())));
+        table.set_header(schema.fields().iter().map(|field| Cell::new(field.name())));
     }
 
     for batch in batches {
@@ -30,12 +30,15 @@ pub fn print_batches(batches: &[RecordBatch], quiet: bool) -> Result<()> {
         }
     }
 
-    println!("{table}");
+    writeln!(writer, "{table}")?;
     Ok(())
 }
 
-/// Print a simple key-value table
-pub fn print_key_value(rows: &[(&str, String)], quiet: bool) {
+pub fn write_key_value<W: Write>(
+    mut writer: W,
+    rows: &[(&str, String)],
+    quiet: bool,
+) -> Result<()> {
     let mut table = Table::new();
 
     if !quiet {
@@ -46,11 +49,15 @@ pub fn print_key_value(rows: &[(&str, String)], quiet: bool) {
         table.add_row(vec![Cell::new(*key), Cell::new(value)]);
     }
 
-    println!("{table}");
+    writeln!(writer, "{table}")?;
+    Ok(())
 }
 
-/// Print schema information as a table
-pub fn print_schema_table(columns: &[ColumnInfo], quiet: bool) {
+pub fn write_schema_table<W: Write>(
+    mut writer: W,
+    columns: &[ColumnInfo],
+    quiet: bool,
+) -> Result<()> {
     let mut table = Table::new();
 
     if !quiet {
@@ -64,10 +71,11 @@ pub fn print_schema_table(columns: &[ColumnInfo], quiet: bool) {
     for column in columns {
         table.add_row(vec![
             Cell::new(&column.name),
-            Cell::new(&column.type_name),
+            Cell::new(column.display_type()),
             Cell::new(if column.nullable { "Yes" } else { "No" }),
         ]);
     }
 
-    println!("{table}");
+    writeln!(writer, "{table}")?;
+    Ok(())
 }

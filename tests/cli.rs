@@ -91,9 +91,10 @@ fn test_schema_json() -> Result<()> {
         .args(["schema", &fixture_path(), "-o", "json"])
         .output()?;
     assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"name\""));
-    assert!(stdout.contains("\"type\""));
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(rows[0]["name"], serde_json::json!("id"));
+    assert_eq!(rows[0]["type"], serde_json::json!("INT64"));
+    assert_eq!(rows[0]["physical_type"], serde_json::json!("INT64"));
     Ok(())
 }
 
@@ -352,8 +353,8 @@ fn test_stats_aggregates_across_row_groups() -> Result<()> {
         rows[0]["column"],
         serde_json::Value::String("value".to_string())
     );
-    assert_eq!(rows[0]["min"], serde_json::Value::String("1".to_string()));
-    assert_eq!(rows[0]["max"], serde_json::Value::String("10".to_string()));
+    assert_eq!(rows[0]["min"], serde_json::json!(1));
+    assert_eq!(rows[0]["max"], serde_json::json!(10));
 
     let _ignored = fs::remove_file(&input_path);
     Ok(())

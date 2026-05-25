@@ -1,29 +1,24 @@
 //! Row count command
 
+use crate::api;
 use crate::cli::args::CountArgs;
 use crate::dataset::Dataset;
-use crate::{engine, Result};
+use crate::Result;
 
 pub fn run(args: CountArgs) -> Result<()> {
-    let mut grand_total: i64 = 0;
     let dataset = Dataset::from_inputs(args.inputs)?;
+    let counts = api::count(&dataset)?;
 
-    for source in dataset.sources() {
-        let count = engine::parquet::row_count(source.path())?;
-
-        if args.quiet {
-            println!("{count}");
-        } else if dataset.is_multi_source() {
-            println!("{}: {count}", source.path().display());
+    for entry in &counts.entries {
+        if args.quiet || !dataset.is_multi_source() {
+            println!("{}", entry.rows);
         } else {
-            println!("{count}");
+            println!("{}: {}", entry.path.display(), entry.rows);
         }
-
-        grand_total += count;
     }
 
     if dataset.is_multi_source() && !args.quiet {
-        println!("Total: {grand_total}");
+        println!("Total: {}", counts.total_rows);
     }
 
     Ok(())

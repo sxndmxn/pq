@@ -127,6 +127,10 @@ $ pq head data.parquet --output csv     # CSV
 $ pq schema data.parquet --output jsonl # One JSON object per schema column
 ```
 
+Schema and stats JSON output include display type plus explicit physical/logical type
+metadata, and stats JSON preserves numeric and boolean min/max values as native JSON
+types.
+
 `count` prints plain text counts, `convert` writes the format implied by the output file extension, and `merge` writes a Parquet file.
 
 ### Glob support
