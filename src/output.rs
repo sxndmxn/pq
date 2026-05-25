@@ -157,7 +157,8 @@ mod tests {
 
     #[test]
     fn rejects_unknown_output_extension() {
-        let path = Path::new("/tmp/output.unknown");
+        let path_buf = std::env::temp_dir().join("output.unknown");
+        let path = path_buf.as_path();
         assert!(matches!(
             file_output_format(path),
             Err(ref err) if err.to_string().contains("Unsupported format")
