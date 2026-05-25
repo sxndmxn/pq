@@ -3,16 +3,20 @@ use crate::model::{ColumnInfo, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::ArrowWriter;
+use parquet::basic::Compression;
+use parquet::file::properties::WriterProperties;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::fs::{self, File};
 use std::path::Path;
+use std::sync::Arc;
 
 pub fn read_head(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let builder = reader_builder(path)?;
     let reader = builder
         .with_batch_size(rows.min(1024))
         .build()
-        .map_err(|error| PqError::read_error(path, &error))?;
+        .map_err(|error| PqError::from_read(path, error))?;
 
     let mut batches = Vec::new();
     let mut total_rows = 0usize;
@@ -41,7 +45,7 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
     let builder = reader_builder(path)?;
     let reader = builder
         .build()
-        .map_err(|error| PqError::read_error(path, &error))?;
+        .map_err(|error| PqError::from_read(path, error))?;
 
     let all_batches: Vec<RecordBatch> = reader
         .collect::<std::result::Result<Vec<_>, _>>()
@@ -124,7 +128,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
 pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>> {
     let reader = reader_builder(path)?
         .build()
-        .map_err(|error| PqError::read_error(path, &error))?;
+        .map_err(|error| PqError::from_read(path, error))?;
 
     reader
         .collect::<std::result::Result<Vec<_>, _>>()
@@ -134,21 +138,55 @@ pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>> {
 pub fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
     Ok(ParquetRecordBatchReaderBuilder::try_new(file)
-        .map_err(|error| map_parquet_error(path, error))?)
+        .map_err(|error| PqError::from_read(path, error))?)
 }
 
 pub fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
     let file = File::open(path).with_path_context(path)?;
-    Ok(SerializedFileReader::new(file).map_err(|error| map_parquet_error(path, error))?)
+    Ok(SerializedFileReader::new(file).map_err(|error| PqError::from_read(path, error))?)
 }
 
-fn map_parquet_error(path: &Path, error: impl std::fmt::Display) -> PqError {
-    let message = error.to_string().to_lowercase();
-    if message.contains("magic") || message.contains("not a valid parquet") {
-        PqError::invalid_parquet(path, error)
-    } else if message.contains("eof") || message.contains("truncat") {
-        PqError::corrupted(path, error)
-    } else {
-        PqError::read_error(path, error)
+pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
+    if paths.is_empty() {
+        return Err(anyhow::anyhow!("No input files specified"));
     }
+
+    let first_builder = reader_builder(paths[0])?;
+    let schema = Arc::clone(first_builder.schema());
+
+    let output_file = File::create(output).map_err(|error| PqError::write_error(output, error))?;
+    let props = WriterProperties::builder()
+        .set_compression(Compression::SNAPPY)
+        .build();
+    let mut writer = ArrowWriter::try_new(output_file, Arc::clone(&schema), Some(props))
+        .map_err(|error| PqError::write_error(output, error))?;
+
+    for path in paths {
+        let builder = reader_builder(path)?;
+
+        if builder.schema().as_ref() != schema.as_ref() {
+            return Err(PqError::SchemaMismatch {
+                file1: paths[0].display().to_string(),
+                file2: path.display().to_string(),
+                details: "Column names or types differ".to_string(),
+            }
+            .into());
+        }
+
+        let reader = builder
+            .build()
+            .map_err(|error| PqError::from_read(path, error))?;
+
+        for batch_result in reader {
+            let batch = batch_result.map_err(|error| PqError::corrupted(path, error))?;
+            writer
+                .write(&batch)
+                .map_err(|error| PqError::write_error(output, error))?;
+        }
+    }
+
+    writer
+        .close()
+        .map_err(|error| PqError::write_error(output, error))?;
+    Ok(())
 }

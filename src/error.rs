@@ -75,6 +75,35 @@ impl PqError {
         }
     }
 
+    /// Classify a read error into a user-facing error with path context
+    pub fn from_read(path: &Path, err: impl std::fmt::Display) -> Self {
+        let message = err.to_string();
+        let normalized = message.to_lowercase();
+
+        if normalized.contains("no such file")
+            || normalized.contains("not found")
+            || normalized.contains("does not exist")
+        {
+            Self::file_not_found(path)
+        } else if normalized.contains("is a directory") {
+            Self::is_directory(path)
+        } else if normalized.contains("permission denied") {
+            Self::read_error(path, "Permission denied")
+        } else if normalized.contains("eof")
+            || normalized.contains("truncat")
+            || normalized.contains("corrupt")
+        {
+            Self::corrupted(path, message)
+        } else if normalized.contains("parquet")
+            || normalized.contains("magic")
+            || normalized.contains("thrift")
+        {
+            Self::invalid_parquet(path, message)
+        } else {
+            Self::read_error(path, message)
+        }
+    }
+
     /// Create a write error with path context
     pub fn write_error(path: &Path, err: impl std::fmt::Display) -> Self {
         Self::WriteError {
@@ -122,27 +151,7 @@ pub trait ResultExt<T> {
 
 impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
     fn with_path_context(self, path: &Path) -> Result<T, PqError> {
-        self.map_err(|e| {
-            let msg = e.to_string().to_lowercase();
-
-            // Categorize the error based on message content
-            if msg.contains("no such file")
-                || msg.contains("not found")
-                || msg.contains("does not exist")
-            {
-                PqError::file_not_found(path)
-            } else if msg.contains("is a directory") {
-                PqError::is_directory(path)
-            } else if msg.contains("permission denied") {
-                PqError::read_error(path, "Permission denied")
-            } else if msg.contains("parquet") || msg.contains("magic") || msg.contains("thrift") {
-                PqError::invalid_parquet(path, e)
-            } else if msg.contains("eof") || msg.contains("truncat") || msg.contains("corrupt") {
-                PqError::corrupted(path, e)
-            } else {
-                PqError::read_error(path, e)
-            }
-        })
+        self.map_err(|error| PqError::from_read(path, error))
     }
 }
 
@@ -167,5 +176,17 @@ mod tests {
             simplify_parquet_error("unexpected eof while reading"),
             "File is truncated or incomplete"
         );
+    }
+
+    #[test]
+    fn test_from_read_classifies_invalid_parquet() {
+        let err = PqError::from_read(Path::new("/tmp/invalid.parquet"), "Invalid thrift footer");
+        assert!(matches!(err, PqError::InvalidParquet { .. }));
+    }
+
+    #[test]
+    fn test_from_read_classifies_corruption() {
+        let err = PqError::from_read(Path::new("/tmp/truncated.parquet"), "unexpected EOF");
+        assert!(matches!(err, PqError::CorruptedFile { .. }));
     }
 }

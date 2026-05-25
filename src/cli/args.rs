@@ -22,7 +22,7 @@ pub enum Command {
     Tail(TailArgs),
     /// Count total rows
     Count(CountArgs),
-    /// Column statistics (min, max, nulls, distinct)
+    /// Column statistics (min, max, nulls)
     Stats(StatsArgs),
     /// Convert to CSV, JSON, or JSONL
     Convert(ConvertArgs),

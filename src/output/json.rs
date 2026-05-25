@@ -5,6 +5,8 @@ use arrow::array::RecordBatch;
 use arrow::json::writer::{JsonArray, LineDelimited};
 use arrow::json::WriterBuilder;
 use serde::Serialize;
+use std::fs::File;
+use std::io::BufWriter;
 use std::io::{self, Write};
 
 pub fn write_json<W: Write>(writer: W, batches: &[RecordBatch]) -> Result<()> {
@@ -60,4 +62,16 @@ pub fn print_json_lines<T: Serialize>(values: &[T]) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn write_batches_to_file(batches: &[RecordBatch], path: &std::path::Path) -> Result<()> {
+    let file = File::create(path)?;
+    let writer = BufWriter::new(file);
+    write_json(writer, batches)
+}
+
+pub fn write_batches_jsonl_to_file(batches: &[RecordBatch], path: &std::path::Path) -> Result<()> {
+    let file = File::create(path)?;
+    let writer = BufWriter::new(file);
+    write_jsonl(writer, batches)
 }
