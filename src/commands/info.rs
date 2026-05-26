@@ -12,9 +12,9 @@ pub fn run(args: InfoArgs) -> Result<()> {
         quiet,
     } = args;
     let dataset = Dataset::from_inputs(inputs)?;
-    let output_format = output.into();
+    let output_format: output::OutputFormat = output.into();
     let infos = api::info(&dataset)?;
-    if output_format == output::OutputFormat::Table {
+    if output_format.is_table() {
         for info in &infos {
             commands::print_source_header(&dataset, info.path(), quiet);
             output::write_file_infos(output_format, quiet, std::slice::from_ref(info))?;

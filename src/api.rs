@@ -72,8 +72,17 @@ pub fn info(dataset: &Dataset) -> Result<Vec<FileInfo>> {
 }
 
 pub fn convert(input: &Path, output: &Path) -> Result<()> {
+    let builder = engine::parquet::reader_builder(input)?;
+    let reader = builder
+        .build()
+        .map_err(|error| crate::PqError::from_read(input, error))?;
     let mut writer = crate::output::BatchFileWriter::create(output)?;
-    engine::parquet::for_each_batch(input, |batch| writer.write(batch))?;
+
+    for batch_result in reader {
+        let batch = batch_result.map_err(|error| crate::PqError::corrupted(input, &error))?;
+        writer.write(&batch)?;
+    }
+
     writer.finish()
 }
 

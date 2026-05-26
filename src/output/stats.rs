@@ -1,4 +1,4 @@
-use crate::model::ColumnStats;
+use crate::model::{ColumnStats, StatsResult};
 use crate::output::csv_support::escape_csv;
 use comfy_table::{Cell, Table};
 use std::io::Write;
@@ -61,6 +61,41 @@ pub fn write_csv<W: Write>(
                     .map_or_else(String::new, |value| row.display_stat_value(value))
             ),
         )?;
+    }
+
+    Ok(())
+}
+
+pub fn write_csv_results<W: Write>(
+    mut writer: W,
+    results: &[StatsResult],
+    include_header: bool,
+) -> std::io::Result<()> {
+    if include_header {
+        writeln!(writer, "file,column,type,null_count,min,max")?;
+    }
+
+    for result in results {
+        for row in &result.rows {
+            writeln!(
+                writer,
+                "{},{},{},{},{},{}",
+                escape_csv(&result.path.display().to_string()),
+                escape_csv(&row.column),
+                escape_csv(&row.display_type()),
+                row.null_count,
+                escape_csv(
+                    &row.min
+                        .as_ref()
+                        .map_or_else(String::new, |value| row.display_stat_value(value))
+                ),
+                escape_csv(
+                    &row.max
+                        .as_ref()
+                        .map_or_else(String::new, |value| row.display_stat_value(value))
+                ),
+            )?;
+        }
     }
 
     Ok(())

@@ -21,11 +21,7 @@ pub fn run(args: SchemaArgs) -> Result<()> {
             output::write_schema(output_format, quiet, &result.columns)?;
         }
     } else {
-        let columns = results
-            .into_iter()
-            .flat_map(|result| result.columns)
-            .collect::<Vec<_>>();
-        output::write_schema(output_format, quiet, &columns)?;
+        output::write_schema_results(output_format, quiet, &results)?;
     }
 
     Ok(())

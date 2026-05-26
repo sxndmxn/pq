@@ -134,19 +134,6 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     })
 }
 
-pub fn for_each_batch(path: &Path, mut f: impl FnMut(&RecordBatch) -> Result<()>) -> Result<()> {
-    let reader = reader_builder(path)?
-        .build()
-        .map_err(|error| PqError::from_read(path, error))?;
-
-    for batch_result in reader {
-        let batch = batch_result.map_err(|error| PqError::corrupted(path, &error))?;
-        f(&batch)?;
-    }
-
-    Ok(())
-}
-
 pub fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
     ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| PqError::from_read(path, error))

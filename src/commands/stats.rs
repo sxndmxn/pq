@@ -22,11 +22,7 @@ pub fn run(args: StatsArgs) -> Result<()> {
             output::write_stats(output_format, quiet, &result.rows)?;
         }
     } else {
-        let rows = results
-            .into_iter()
-            .flat_map(|result| result.rows)
-            .collect::<Vec<_>>();
-        output::write_stats(output_format, quiet, &rows)?;
+        output::write_stats_results(output_format, quiet, &results)?;
     }
 
     Ok(())
