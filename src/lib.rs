@@ -8,9 +8,7 @@ mod model;
 mod output;
 
 pub use anyhow::Result;
-pub use api::{
-    count, dataset_from_inputs, info, merge, scan, schema, stats,
-};
+pub use api::{count, dataset_from_inputs, info, merge, scan, schema, stats};
 use clap::Parser;
 pub use dataset::Dataset;
 pub use error::PqError;

@@ -1,6 +1,8 @@
 use crate::dataset::Dataset;
 use crate::engine;
-use crate::model::{CountResult, FileInfo, ScanKind, ScanOptions, ScanResult, SchemaResult, StatsResult};
+use crate::model::{
+    CountEntry, CountResult, FileInfo, ScanKind, ScanOptions, ScanResult, SchemaResult, StatsResult,
+};
 use crate::Result;
 use std::path::{Path, PathBuf};
 

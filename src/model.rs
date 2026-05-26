@@ -1,8 +1,8 @@
+use arrow::array::RecordBatch;
 use parquet::basic::{
     Compression as ParquetCompression, ConvertedType as ParquetConvertedType,
     LogicalType as ParquetLogicalType, TimeUnit as ParquetTimeUnit, Type as ParquetPhysicalType,
 };
-use arrow::array::RecordBatch;
 use parquet::schema::types::ColumnDescriptor;
 use std::fmt;
 use std::path::{Path, PathBuf};
