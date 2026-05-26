@@ -32,6 +32,22 @@ impl OutputFormat {
     pub fn is_table(self) -> bool {
         self == Self::Table
     }
+
+    pub fn structured(self) -> Option<StructuredOutputFormat> {
+        match self {
+            Self::Table => None,
+            Self::Json => Some(StructuredOutputFormat::Json),
+            Self::Jsonl => Some(StructuredOutputFormat::Jsonl),
+            Self::Csv => Some(StructuredOutputFormat::Csv),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StructuredOutputFormat {
+    Json,
+    Jsonl,
+    Csv,
 }
 
 #[derive(Debug)]
@@ -100,29 +116,43 @@ pub fn write_schema(output: OutputFormat, quiet: bool, columns: &[ColumnInfo]) -
 }
 
 pub fn write_schema_results(
-    output: OutputFormat,
+    output: StructuredOutputFormat,
     quiet: bool,
     results: &[SchemaResult],
 ) -> Result<()> {
     if let [result] = results {
-        return write_schema(output, quiet, &result.columns);
+        return write_schema_result(output, quiet, result);
     }
 
     match output {
-        OutputFormat::Table => {
-            let columns = results
-                .iter()
-                .flat_map(|result| result.columns.iter().cloned())
-                .collect::<Vec<_>>();
-            table::write_schema_table(io::stdout().lock(), &columns, quiet)?;
-        }
-        OutputFormat::Json => {
+        StructuredOutputFormat::Json => {
             json::write_value(io::stdout().lock(), &schema_result_rows(results))?;
         }
-        OutputFormat::Jsonl => {
+        StructuredOutputFormat::Jsonl => {
             json::write_json_lines(io::stdout().lock(), &schema_result_rows(results))?;
         }
-        OutputFormat::Csv => schema::write_csv_results(io::stdout().lock(), results, !quiet)?,
+        StructuredOutputFormat::Csv => {
+            schema::write_csv_results(io::stdout().lock(), results, !quiet)?
+        }
+    }
+    Ok(())
+}
+
+fn write_schema_result(
+    output: StructuredOutputFormat,
+    quiet: bool,
+    result: &SchemaResult,
+) -> Result<()> {
+    match output {
+        StructuredOutputFormat::Json => {
+            json::write_value(io::stdout().lock(), &schema_rows(&result.columns))?;
+        }
+        StructuredOutputFormat::Jsonl => {
+            json::write_json_lines(io::stdout().lock(), &schema_rows(&result.columns))?;
+        }
+        StructuredOutputFormat::Csv => {
+            schema::write_csv(io::stdout().lock(), &result.columns, !quiet)?
+        }
     }
     Ok(())
 }
@@ -138,27 +168,41 @@ pub fn write_stats(output: OutputFormat, quiet: bool, rows: &[ColumnStats]) -> R
 }
 
 pub fn write_stats_results(
-    output: OutputFormat,
+    output: StructuredOutputFormat,
     quiet: bool,
     results: &[StatsResult],
 ) -> Result<()> {
     if let [result] = results {
-        return write_stats(output, quiet, &result.rows);
+        return write_stats_result(output, quiet, result);
     }
 
     match output {
-        OutputFormat::Table => {
-            let rows = results
-                .iter()
-                .flat_map(|result| result.rows.iter().cloned())
-                .collect::<Vec<_>>();
-            stats::write_table(io::stdout().lock(), &rows, quiet)?;
+        StructuredOutputFormat::Json => {
+            json::write_value(io::stdout().lock(), &stats_result_rows(results))?
         }
-        OutputFormat::Json => json::write_value(io::stdout().lock(), &stats_result_rows(results))?,
-        OutputFormat::Jsonl => {
+        StructuredOutputFormat::Jsonl => {
             json::write_json_lines(io::stdout().lock(), &stats_result_rows(results))?;
         }
-        OutputFormat::Csv => stats::write_csv_results(io::stdout().lock(), results, !quiet)?,
+        StructuredOutputFormat::Csv => {
+            stats::write_csv_results(io::stdout().lock(), results, !quiet)?
+        }
+    }
+    Ok(())
+}
+
+fn write_stats_result(
+    output: StructuredOutputFormat,
+    quiet: bool,
+    result: &StatsResult,
+) -> Result<()> {
+    match output {
+        StructuredOutputFormat::Json => {
+            json::write_value(io::stdout().lock(), &stats_rows(&result.rows))?
+        }
+        StructuredOutputFormat::Jsonl => {
+            json::write_json_lines(io::stdout().lock(), &stats_rows(&result.rows))?;
+        }
+        StructuredOutputFormat::Csv => stats::write_csv(io::stdout().lock(), &result.rows, !quiet)?,
     }
     Ok(())
 }
