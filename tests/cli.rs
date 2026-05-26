@@ -52,6 +52,11 @@ fn write_parquet(
     Ok(())
 }
 
+fn assert_no_source_headers(output: &[u8]) {
+    let stdout = String::from_utf8_lossy(output);
+    assert!(!stdout.contains("==>"));
+}
+
 #[test]
 fn test_help() -> Result<()> {
     let output = pq().arg("--help").output()?;
@@ -99,6 +104,21 @@ fn test_schema_json() -> Result<()> {
 }
 
 #[test]
+fn test_schema_multi_file_json_is_parseable() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["schema", &file, &file, "-o", "json"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("schema json output should be an array"))?;
+    assert_eq!(rows.len(), 8);
+    Ok(())
+}
+
+#[test]
 fn test_head() -> Result<()> {
     let output = pq().args(["head", &fixture_path()]).output()?;
     assert!(output.status.success());
@@ -131,6 +151,21 @@ fn test_head_json() -> Result<()> {
 }
 
 #[test]
+fn test_head_multi_file_json_is_parseable() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["head", &file, &file, "-o", "json"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("head json output should be an array"))?;
+    assert_eq!(rows.len(), 10);
+    Ok(())
+}
+
+#[test]
 fn test_tail() -> Result<()> {
     let output = pq().args(["tail", &fixture_path(), "-n", "2"]).output()?;
     assert!(output.status.success());
@@ -157,6 +192,53 @@ fn test_stats() -> Result<()> {
     assert!(stdout.contains("Min"));
     assert!(stdout.contains("Max"));
     assert!(stdout.contains("id"));
+    Ok(())
+}
+
+#[test]
+fn test_stats_multi_file_json_is_parseable() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["stats", &file, &file, "-o", "json"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("stats json output should be an array"))?;
+    assert_eq!(rows.len(), 8);
+    Ok(())
+}
+
+#[test]
+fn test_multi_file_jsonl_outputs_only_json_lines() -> Result<()> {
+    let file = fixture_path();
+
+    for command in ["schema", "stats", "head"] {
+        let output = pq().args([command, &file, &file, "-o", "jsonl"]).output()?;
+        assert!(output.status.success());
+        assert_no_source_headers(&output.stdout);
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines = stdout.lines().collect::<Vec<_>>();
+        assert!(!lines.is_empty());
+        for line in lines {
+            let value: serde_json::Value = serde_json::from_str(line)?;
+            assert!(value.is_object());
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_multi_file_table_output_keeps_source_headers() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["schema", &file, &file]).output()?;
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.matches("==>").count(), 2);
     Ok(())
 }
 
@@ -326,6 +408,51 @@ fn test_convert_json_preserves_types() -> Result<()> {
     let _ignored = fs::remove_file(&input_path);
     let _ignored = fs::remove_file(&json_path);
     let _ignored = fs::remove_file(&jsonl_path);
+    Ok(())
+}
+
+#[test]
+fn test_head_multi_file_json_rejects_incompatible_schemas() -> Result<()> {
+    let left_schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Int64,
+        false,
+    )]));
+    let right_schema = Arc::new(Schema::new(vec![Field::new(
+        "other",
+        DataType::Utf8,
+        false,
+    )]));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(StringArray::from(vec!["x"])) as ArrayRef],
+    )?;
+    let left = temp_path("head_schema_left", "parquet")?;
+    let right = temp_path("head_schema_right", "parquet")?;
+    write_parquet(&left, left_schema, &[left_batch], None)?;
+    write_parquet(&right, right_schema, &[right_batch], None)?;
+
+    let output = pq()
+        .args([
+            "head",
+            &left.display().to_string(),
+            &right.display().to_string(),
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Schema mismatch"));
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
     Ok(())
 }
 

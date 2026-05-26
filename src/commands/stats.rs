@@ -13,11 +13,21 @@ pub fn run(args: StatsArgs) -> Result<()> {
         quiet,
     } = args;
     let dataset = Dataset::from_inputs(inputs)?;
-    let output = output.into();
+    let output_format: output::OutputFormat = output.into();
+    let results = api::stats(&dataset, column.as_deref())?;
 
-    for result in api::stats(&dataset, column.as_deref())? {
-        commands::print_source_header(&dataset, &result.path, quiet);
-        output::write_stats(output, quiet, &result.rows)?;
+    if output_format.is_table() {
+        for result in results {
+            commands::print_source_header(&dataset, &result.path, quiet);
+            output::write_stats(output_format, quiet, &result.rows)?;
+        }
+    } else {
+        let rows = results
+            .into_iter()
+            .flat_map(|result| result.rows)
+            .collect::<Vec<_>>();
+        output::write_stats(output_format, quiet, &rows)?;
     }
+
     Ok(())
 }

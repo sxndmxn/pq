@@ -12,11 +12,21 @@ pub fn run(args: SchemaArgs) -> Result<()> {
         quiet,
     } = args;
     let dataset = Dataset::from_inputs(inputs)?;
-    let output = output.into();
+    let output_format: output::OutputFormat = output.into();
+    let results = api::schema(&dataset)?;
 
-    for result in api::schema(&dataset)? {
-        commands::print_source_header(&dataset, &result.path, quiet);
-        output::write_schema(output, quiet, &result.columns)?;
+    if output_format.is_table() {
+        for result in results {
+            commands::print_source_header(&dataset, &result.path, quiet);
+            output::write_schema(output_format, quiet, &result.columns)?;
+        }
+    } else {
+        let columns = results
+            .into_iter()
+            .flat_map(|result| result.columns)
+            .collect::<Vec<_>>();
+        output::write_schema(output_format, quiet, &columns)?;
     }
+
     Ok(())
 }

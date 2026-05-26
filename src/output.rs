@@ -25,6 +25,12 @@ pub(crate) enum OutputFormat {
     Csv,
 }
 
+impl OutputFormat {
+    pub fn is_table(self) -> bool {
+        self == Self::Table
+    }
+}
+
 #[derive(Debug)]
 enum FileOutputFormat {
     Csv,
