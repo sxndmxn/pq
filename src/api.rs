@@ -76,7 +76,7 @@ pub fn convert(input: &Path, output: &Path) -> Result<()> {
     let reader = builder
         .build()
         .map_err(|error| crate::PqError::from_read(input, error))?;
-    let pending_output = crate::output::PendingOutput::new(output)?;
+    let pending_output = crate::atomic_output::PendingOutput::new(output)?;
     let mut writer = crate::output::BatchFileWriter::create(pending_output.path())?;
 
     for batch_result in reader {

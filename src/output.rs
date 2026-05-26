@@ -7,11 +7,9 @@ use crate::Result;
 use arrow::array::RecordBatch;
 use serde::Serialize;
 use serde_json::Value;
-use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 mod csv;
 mod csv_support;
@@ -42,8 +40,6 @@ enum FileOutputFormat {
     Json,
     Jsonl,
 }
-
-static TEMP_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Serialize)]
 struct SchemaJsonRow {
@@ -206,66 +202,6 @@ pub fn write_counts(quiet: bool, is_multi_source: bool, counts: &CountResult) ->
 pub(crate) struct BatchFileWriter {
     path: PathBuf,
     inner: BatchFileWriterKind,
-}
-
-#[derive(Debug)]
-pub(crate) struct PendingOutput {
-    target_path: PathBuf,
-    temp_path: PathBuf,
-    committed: bool,
-}
-
-impl PendingOutput {
-    pub fn new(target_path: &Path) -> Result<Self> {
-        let file_name = target_path.file_name().ok_or_else(|| {
-            PqError::write_error(target_path, "output path must include a file name")
-        })?;
-        let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
-        let counter = TEMP_OUTPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let extension = target_path
-            .extension()
-            .and_then(|extension| extension.to_str());
-        let temp_file_name = match extension {
-            Some(extension) => format!(
-                ".{}.tmp.{}.{}.{}",
-                file_name.to_string_lossy(),
-                std::process::id(),
-                counter,
-                extension
-            ),
-            None => format!(
-                ".{}.tmp.{}.{}",
-                file_name.to_string_lossy(),
-                std::process::id(),
-                counter
-            ),
-        };
-
-        Ok(Self {
-            target_path: target_path.to_path_buf(),
-            temp_path: parent.join(temp_file_name),
-            committed: false,
-        })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.temp_path
-    }
-
-    pub fn commit(mut self) -> Result<()> {
-        fs::rename(&self.temp_path, &self.target_path)
-            .map_err(|error| PqError::write_error(&self.target_path, error))?;
-        self.committed = true;
-        Ok(())
-    }
-}
-
-impl Drop for PendingOutput {
-    fn drop(&mut self) {
-        if !self.committed {
-            let _ignored = fs::remove_file(&self.temp_path);
-        }
-    }
 }
 
 enum BatchFileWriterKind {
@@ -485,48 +421,6 @@ mod tests {
             vec![Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef],
         )
         .map_err(Into::into)
-    }
-
-    #[test]
-    fn pending_output_commits_temp_file_to_target() -> Result<()> {
-        let target_path = temp_path("txt")?;
-        let pending_output = PendingOutput::new(&target_path)?;
-        fs::write(pending_output.path(), b"replacement")?;
-
-        pending_output.commit()?;
-
-        assert_eq!(fs::read(&target_path)?, b"replacement");
-        fs::remove_file(target_path)?;
-        Ok(())
-    }
-
-    #[test]
-    fn pending_output_replaces_existing_target_on_commit() -> Result<()> {
-        let target_path = temp_path("txt")?;
-        fs::write(&target_path, b"original")?;
-        let pending_output = PendingOutput::new(&target_path)?;
-        fs::write(pending_output.path(), b"replacement")?;
-
-        pending_output.commit()?;
-
-        assert_eq!(fs::read(&target_path)?, b"replacement");
-        fs::remove_file(target_path)?;
-        Ok(())
-    }
-
-    #[test]
-    fn pending_output_removes_temp_file_when_dropped() -> Result<()> {
-        let target_path = temp_path("txt")?;
-        let temp_path = {
-            let pending_output = PendingOutput::new(&target_path)?;
-            let temp_path = pending_output.path().to_path_buf();
-            fs::write(&temp_path, b"partial")?;
-            temp_path
-        };
-
-        assert!(!temp_path.exists());
-        assert!(!target_path.exists());
-        Ok(())
     }
 
     #[test]
