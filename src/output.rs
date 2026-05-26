@@ -211,23 +211,23 @@ enum BatchFileWriterKind {
 }
 
 impl BatchFileWriter {
-    pub fn create(path: &Path) -> Result<Self> {
-        let inner = match file_output_format(path)? {
+    pub fn create_at(write_path: &Path, error_path: &Path) -> Result<Self> {
+        let inner = match file_output_format(error_path)? {
             FileOutputFormat::Csv => BatchFileWriterKind::Csv(Box::new(
-                csv::BatchFileWriter::create(path)
-                    .map_err(|error| PqError::write_error(path, error))?,
+                csv::BatchFileWriter::create(write_path)
+                    .map_err(|error| PqError::write_error(error_path, error))?,
             )),
             FileOutputFormat::Json => BatchFileWriterKind::Json(
-                json::JsonBatchFileWriter::create(path)
-                    .map_err(|error| PqError::write_error(path, error))?,
+                json::JsonBatchFileWriter::create(write_path)
+                    .map_err(|error| PqError::write_error(error_path, error))?,
             ),
             FileOutputFormat::Jsonl => BatchFileWriterKind::Jsonl(
-                json::JsonlBatchFileWriter::create(path)
-                    .map_err(|error| PqError::write_error(path, error))?,
+                json::JsonlBatchFileWriter::create(write_path)
+                    .map_err(|error| PqError::write_error(error_path, error))?,
             ),
         };
         Ok(Self {
-            path: path.to_path_buf(),
+            path: error_path.to_path_buf(),
             inner,
         })
     }
@@ -428,13 +428,29 @@ mod tests {
         let path = temp_path("jsonl")?;
         let batch = sample_batch()?;
 
-        let mut writer = BatchFileWriter::create(&path)?;
+        let mut writer = BatchFileWriter::create_at(&path, &path)?;
         writer.write(&batch)?;
         writer.finish()?;
 
         let contents = fs::read_to_string(&path)?;
         assert!(contents.lines().all(|line| line.starts_with('{')));
         fs::remove_file(path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn infers_file_format_from_error_path_when_writing_elsewhere() -> Result<()> {
+        let write_path = temp_path("tmp")?;
+        let error_path = temp_path("jsonl")?;
+        let batch = sample_batch()?;
+
+        let mut writer = BatchFileWriter::create_at(&write_path, &error_path)?;
+        writer.write(&batch)?;
+        writer.finish()?;
+
+        let contents = fs::read_to_string(&write_path)?;
+        assert!(contents.lines().all(|line| line.starts_with('{')));
+        fs::remove_file(write_path)?;
         Ok(())
     }
 
