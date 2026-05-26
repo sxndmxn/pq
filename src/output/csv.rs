@@ -1,8 +1,9 @@
 //! CSV output formatting
 
-use anyhow::Result;
+use crate::Result;
 use arrow::array::RecordBatch;
-use arrow::csv::WriterBuilder;
+use arrow::csv::{Writer, WriterBuilder};
+use std::fs::File;
 use std::io::Write;
 
 pub fn write_batches<W: Write>(
@@ -25,13 +26,22 @@ pub fn write_batches<W: Write>(
     Ok(())
 }
 
-/// Write record batches as CSV to a file
-pub fn write_batches_to_file(batches: &[RecordBatch], path: &std::path::Path) -> Result<()> {
-    if batches.is_empty() {
-        std::fs::File::create(path)?;
-        return Ok(());
+pub struct BatchFileWriter {
+    writer: Writer<File>,
+}
+
+impl BatchFileWriter {
+    pub fn create(path: &std::path::Path) -> std::io::Result<Self> {
+        let file = File::create(path)?;
+        Ok(Self {
+            writer: WriterBuilder::new().with_header(true).build(file),
+        })
     }
 
-    let file = std::fs::File::create(path)?;
-    write_batches(file, batches, true)
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        self.writer.write(batch)?;
+        Ok(())
+    }
+
+    pub fn finish(&mut self) {}
 }

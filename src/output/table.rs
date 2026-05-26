@@ -1,7 +1,7 @@
 //! Pretty table formatting using comfy-table
 
 use crate::model::ColumnInfo;
-use anyhow::Result;
+use crate::Result;
 use arrow::array::RecordBatch;
 use comfy_table::{Cell, Table};
 use std::io::Write;

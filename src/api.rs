@@ -41,7 +41,9 @@ pub fn count(dataset: &Dataset) -> Result<CountResult> {
 
     for path in dataset.paths() {
         let rows = engine::parquet::row_count(path)?;
-        total_rows += rows;
+        total_rows = total_rows
+            .checked_add(rows)
+            .ok_or_else(|| crate::PqError::invalid_metadata(path, "row count total overflow"))?;
         entries.push(CountEntry {
             path: path.to_path_buf(),
             rows,
@@ -70,8 +72,9 @@ pub fn info(dataset: &Dataset) -> Result<Vec<FileInfo>> {
 }
 
 pub fn convert(input: &Path, output: &Path) -> Result<()> {
-    let batches = engine::parquet::read_batches(input)?;
-    crate::output::write_batches_to_path(output, &batches)
+    let mut writer = crate::output::BatchFileWriter::create(output)?;
+    engine::parquet::for_each_batch(input, |batch| writer.write(batch))?;
+    writer.finish()
 }
 
 pub fn merge(dataset: &Dataset, output: &Path) -> Result<()> {

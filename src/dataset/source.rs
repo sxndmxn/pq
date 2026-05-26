@@ -13,24 +13,27 @@ pub struct Dataset {
 impl Dataset {
     pub fn from_inputs(inputs: Vec<PathBuf>) -> Result<Self> {
         if inputs.is_empty() {
-            return Err(PqError::NoInputFiles.into());
+            return Err(PqError::NoInputFiles);
         }
 
         let mut paths = Vec::new();
-        let mut seen_glob_paths = BTreeSet::new();
+        let mut seen_paths = BTreeSet::new();
+        let mut seen_from_globs = BTreeSet::new();
 
         for input in inputs {
             if is_glob_pattern(&input) {
-                expand_glob_input(&input, &mut paths, &mut seen_glob_paths)?;
+                expand_glob_input(&input, &mut paths, &mut seen_paths, &mut seen_from_globs)?;
             } else {
                 validate_file_path(&input)?;
-                seen_glob_paths.insert(input.clone());
-                paths.push(input);
+                if !seen_from_globs.contains(&input) {
+                    seen_paths.insert(input.clone());
+                    paths.push(input);
+                }
             }
         }
 
         if paths.is_empty() {
-            return Err(PqError::NoInputFiles.into());
+            return Err(PqError::NoInputFiles);
         }
 
         Ok(Self { paths })
@@ -48,13 +51,16 @@ impl Dataset {
 fn expand_glob_input(
     input: &Path,
     paths: &mut Vec<PathBuf>,
-    seen_glob_paths: &mut BTreeSet<PathBuf>,
+    seen_paths: &mut BTreeSet<PathBuf>,
+    seen_from_globs: &mut BTreeSet<PathBuf>,
 ) -> Result<()> {
     let pattern = input.to_string_lossy().into_owned();
     let mut matches = Vec::new();
 
-    for entry in glob::glob(&pattern)? {
-        let path = entry?;
+    for entry in
+        glob::glob(&pattern).map_err(|error| PqError::invalid_glob_pattern(&pattern, error))?
+    {
+        let path = entry.map_err(|error| PqError::from_read(error.path(), error.error()))?;
         validate_file_path(&path)?;
         matches.push(path);
 
@@ -62,18 +68,18 @@ fn expand_glob_input(
             return Err(PqError::TooManyFilesMatched {
                 pattern,
                 max_matches: MAX_GLOB_FILES,
-            }
-            .into());
+            });
         }
     }
 
     if matches.is_empty() {
-        return Err(PqError::NoFilesMatched { pattern }.into());
+        return Err(PqError::NoFilesMatched { pattern });
     }
 
     matches.sort();
     for path in matches {
-        if seen_glob_paths.insert(path.clone()) {
+        if seen_paths.insert(path.clone()) {
+            seen_from_globs.insert(path.clone());
             paths.push(path);
         }
     }
@@ -87,11 +93,11 @@ fn is_glob_pattern(path: &Path) -> bool {
 
 fn validate_file_path(path: &Path) -> Result<()> {
     if !path.exists() {
-        return Err(PqError::file_not_found(path).into());
+        return Err(PqError::file_not_found(path));
     }
 
     if path.is_dir() {
-        return Err(PqError::is_directory(path).into());
+        return Err(PqError::is_directory(path));
     }
 
     Ok(())
@@ -109,7 +115,7 @@ mod tests {
     fn temp_dir() -> Result<PathBuf> {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
+            .map_err(PqError::output_error)?
             .as_nanos();
         let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("pq_dataset_{unique}_{counter}"));
@@ -128,6 +134,39 @@ mod tests {
         let paths = dataset.paths().collect::<Vec<_>>();
 
         assert_eq!(paths, vec![file.as_path()]);
+
+        fs::remove_file(file)?;
+        fs::remove_dir(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn deduplicates_overlapping_glob_and_explicit_inputs() -> Result<()> {
+        let dir = temp_dir()?;
+        let file = dir.join("sample.parquet");
+        fs::write(&file, b"PAR1")?;
+        let glob = dir.join("*.parquet");
+
+        let dataset = Dataset::from_inputs(vec![glob, file.clone()])?;
+        let paths = dataset.paths().collect::<Vec<_>>();
+
+        assert_eq!(paths, vec![file.as_path()]);
+
+        fs::remove_file(file)?;
+        fs::remove_dir(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn preserves_repeated_explicit_inputs() -> Result<()> {
+        let dir = temp_dir()?;
+        let file = dir.join("sample.parquet");
+        fs::write(&file, b"PAR1")?;
+
+        let dataset = Dataset::from_inputs(vec![file.clone(), file.clone()])?;
+        let paths = dataset.paths().collect::<Vec<_>>();
+
+        assert_eq!(paths, vec![file.as_path(), file.as_path()]);
 
         fs::remove_file(file)?;
         fs::remove_dir(dir)?;

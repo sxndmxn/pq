@@ -1,6 +1,6 @@
 use crate::model::ColumnInfo;
 use crate::output::csv_support::escape_csv;
-use anyhow::Result;
+use crate::Result;
 use std::io::Write;
 
 pub fn write_csv<W: Write>(

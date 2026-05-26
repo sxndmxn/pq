@@ -49,6 +49,10 @@ fn file_info_comes_from_public_api() -> Result<()> {
     assert_eq!(info.num_rows, 5);
     assert_eq!(info.num_columns, 4);
     assert_eq!(info.num_row_groups, 1);
+    assert_eq!(
+        info.compression,
+        pq::CompressionSummary::Single(pq::CompressionCodec::Snappy)
+    );
     assert!(info
         .path
         .display()
@@ -76,6 +80,51 @@ fn column_stats_come_from_public_api() -> Result<()> {
     );
 
     Ok(())
+}
+
+#[test]
+fn missing_stats_column_is_typed_error() -> Result<()> {
+    let dataset = pq::dataset_from_inputs(vec![fixture_path()])?;
+    let Err(error) = pq::stats(&dataset, Some("missing_column")) else {
+        return Err(anyhow::anyhow!("missing stats column should fail"));
+    };
+
+    assert!(matches!(error, pq::PqError::ColumnNotFound { .. }));
+
+    Ok(())
+}
+
+#[test]
+fn binary_stats_display_is_deterministic() {
+    let binary_stats = pq::ColumnStats {
+        column: "payload".to_string(),
+        column_type: pq::ColumnType {
+            physical: pq::PhysicalType::ByteArray,
+            logical: None,
+        },
+        null_count: 0,
+        min: None,
+        max: None,
+    };
+    let string_stats = pq::ColumnStats {
+        column: "name".to_string(),
+        column_type: pq::ColumnType {
+            physical: pq::PhysicalType::ByteArray,
+            logical: Some(pq::LogicalTypeKind::String),
+        },
+        null_count: 0,
+        min: None,
+        max: None,
+    };
+
+    assert_eq!(
+        binary_stats.display_stat_value(&pq::StatValue::Binary(vec![0xff, b'a'])),
+        "ff61"
+    );
+    assert_eq!(
+        string_stats.display_stat_value(&pq::StatValue::Binary(b"Alice".to_vec())),
+        "Alice"
+    );
 }
 
 #[test]

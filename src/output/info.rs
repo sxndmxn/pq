@@ -1,7 +1,7 @@
 use crate::model::FileInfo;
 use crate::output::csv_support::escape_csv;
 use crate::output::table;
-use anyhow::Result;
+use crate::Result;
 use std::io::Write;
 
 pub fn write_table<W: Write>(mut writer: W, rows: &[FileInfo], quiet: bool) -> Result<()> {
@@ -16,11 +16,7 @@ pub fn write_table<W: Write>(mut writer: W, rows: &[FileInfo], quiet: bool) -> R
             ("Rows", row.num_rows.to_string()),
             ("Columns", row.num_columns.to_string()),
             ("Row Groups", row.num_row_groups.to_string()),
-            (
-                "Compression",
-                row.compression
-                    .map_or_else(|| "N/A".to_string(), |compression| compression.to_string()),
-            ),
+            ("Compression", row.compression.to_string()),
             (
                 "Created By",
                 row.created_by
@@ -53,10 +49,7 @@ pub fn write_csv<W: Write>(
             row.num_rows,
             row.num_columns,
             row.num_row_groups,
-            escape_csv(
-                &row.compression
-                    .map_or_else(String::new, |compression| compression.to_string())
-            ),
+            escape_csv(&row.compression.to_string()),
             escape_csv(row.created_by.as_deref().unwrap_or("")),
             row.version,
         )?;
