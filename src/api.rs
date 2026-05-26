@@ -71,7 +71,7 @@ pub fn info(dataset: &Dataset) -> Result<Vec<FileInfo>> {
     dataset.paths().map(engine::parquet::file_info).collect()
 }
 
-pub fn convert(input: &Path, output: &Path) -> Result<()> {
+pub(crate) fn convert(input: &Path, output: &Path) -> Result<()> {
     let builder = engine::parquet::reader_builder(input)?;
     let reader = builder
         .build()
