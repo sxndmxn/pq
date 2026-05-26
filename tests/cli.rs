@@ -100,6 +100,7 @@ fn test_schema_json() -> Result<()> {
     assert_eq!(rows[0]["name"], serde_json::json!("id"));
     assert_eq!(rows[0]["type"], serde_json::json!("INT64"));
     assert_eq!(rows[0]["physical_type"], serde_json::json!("INT64"));
+    assert!(rows[0].get("file").is_none());
     Ok(())
 }
 
@@ -115,6 +116,25 @@ fn test_schema_multi_file_json_is_parseable() -> Result<()> {
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("schema json output should be an array"))?;
     assert_eq!(rows.len(), 8);
+    assert_eq!(rows[0]["file"], serde_json::json!(file));
+    assert_eq!(rows[4]["file"], serde_json::json!(file));
+    Ok(())
+}
+
+#[test]
+fn test_schema_multi_file_csv_includes_source_file() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["schema", &file, &file, "-o", "csv"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    assert_eq!(lines.next(), Some("file,column,type,nullable"));
+    let first_row = lines
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("schema csv should contain rows"))?;
+    assert!(first_row.starts_with(&format!("{file},id,")));
     Ok(())
 }
 
@@ -207,6 +227,25 @@ fn test_stats_multi_file_json_is_parseable() -> Result<()> {
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("stats json output should be an array"))?;
     assert_eq!(rows.len(), 8);
+    assert_eq!(rows[0]["file"], serde_json::json!(file));
+    assert_eq!(rows[4]["file"], serde_json::json!(file));
+    Ok(())
+}
+
+#[test]
+fn test_stats_multi_file_csv_includes_source_file() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["stats", &file, &file, "-o", "csv"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    assert_eq!(lines.next(), Some("file,column,type,null_count,min,max"));
+    let first_row = lines
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("stats csv should contain rows"))?;
+    assert!(first_row.starts_with(&format!("{file},id,")));
     Ok(())
 }
 
@@ -225,6 +264,9 @@ fn test_multi_file_jsonl_outputs_only_json_lines() -> Result<()> {
         for line in lines {
             let value: serde_json::Value = serde_json::from_str(line)?;
             assert!(value.is_object());
+            if command != "head" {
+                assert_eq!(value["file"], serde_json::json!(file));
+            }
         }
     }
 
@@ -296,6 +338,29 @@ fn test_convert_json() -> Result<()> {
     assert!(contents.contains("\"name\""));
 
     let _ignored = fs::remove_file(&output_path);
+    Ok(())
+}
+
+#[test]
+fn test_convert_invalid_input_preserves_existing_output() -> Result<()> {
+    let input_path = temp_path("invalid_convert_input", "parquet")?;
+    let output_path = temp_path("invalid_convert_output", "csv")?;
+    fs::write(&input_path, b"not parquet")?;
+    fs::write(&output_path, b"sentinel")?;
+
+    let output = pq()
+        .args([
+            "convert",
+            &input_path.display().to_string(),
+            &output_path.display().to_string(),
+        ])
+        .output()?;
+
+    assert!(!output.status.success());
+    assert_eq!(fs::read(&output_path)?, b"sentinel");
+
+    fs::remove_file(input_path)?;
+    fs::remove_file(output_path)?;
     Ok(())
 }
 

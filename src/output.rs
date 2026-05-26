@@ -1,5 +1,8 @@
 use crate::error::PqError;
-use crate::model::{ColumnInfo, ColumnStats, CountResult, FileInfo, LogicalTypeKind, StatValue};
+use crate::model::{
+    ColumnInfo, ColumnStats, CountResult, FileInfo, LogicalTypeKind, SchemaResult, StatValue,
+    StatsResult,
+};
 use crate::Result;
 use arrow::array::RecordBatch;
 use serde::Serialize;
@@ -40,6 +43,8 @@ enum FileOutputFormat {
 
 #[derive(Serialize)]
 struct SchemaJsonRow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
     name: String,
     #[serde(rename = "type")]
     display_type: String,
@@ -50,6 +55,8 @@ struct SchemaJsonRow {
 
 #[derive(Serialize)]
 struct StatsJsonRow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
     column: String,
     #[serde(rename = "type")]
     display_type: String,
@@ -92,12 +99,66 @@ pub fn write_schema(output: OutputFormat, quiet: bool, columns: &[ColumnInfo]) -
     Ok(())
 }
 
+pub fn write_schema_results(
+    output: OutputFormat,
+    quiet: bool,
+    results: &[SchemaResult],
+) -> Result<()> {
+    if let [result] = results {
+        return write_schema(output, quiet, &result.columns);
+    }
+
+    match output {
+        OutputFormat::Table => {
+            let columns = results
+                .iter()
+                .flat_map(|result| result.columns.iter().cloned())
+                .collect::<Vec<_>>();
+            table::write_schema_table(io::stdout().lock(), &columns, quiet)?;
+        }
+        OutputFormat::Json => {
+            json::write_value(io::stdout().lock(), &schema_result_rows(results))?;
+        }
+        OutputFormat::Jsonl => {
+            json::write_json_lines(io::stdout().lock(), &schema_result_rows(results))?;
+        }
+        OutputFormat::Csv => schema::write_csv_results(io::stdout().lock(), results, !quiet)?,
+    }
+    Ok(())
+}
+
 pub fn write_stats(output: OutputFormat, quiet: bool, rows: &[ColumnStats]) -> Result<()> {
     match output {
         OutputFormat::Table => stats::write_table(io::stdout().lock(), rows, quiet)?,
         OutputFormat::Json => json::write_value(io::stdout().lock(), &stats_rows(rows))?,
         OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &stats_rows(rows))?,
         OutputFormat::Csv => stats::write_csv(io::stdout().lock(), rows, !quiet)?,
+    }
+    Ok(())
+}
+
+pub fn write_stats_results(
+    output: OutputFormat,
+    quiet: bool,
+    results: &[StatsResult],
+) -> Result<()> {
+    if let [result] = results {
+        return write_stats(output, quiet, &result.rows);
+    }
+
+    match output {
+        OutputFormat::Table => {
+            let rows = results
+                .iter()
+                .flat_map(|result| result.rows.iter().cloned())
+                .collect::<Vec<_>>();
+            stats::write_table(io::stdout().lock(), &rows, quiet)?;
+        }
+        OutputFormat::Json => json::write_value(io::stdout().lock(), &stats_result_rows(results))?,
+        OutputFormat::Jsonl => {
+            json::write_json_lines(io::stdout().lock(), &stats_result_rows(results))?;
+        }
+        OutputFormat::Csv => stats::write_csv_results(io::stdout().lock(), results, !quiet)?,
     }
     Ok(())
 }
@@ -217,42 +278,74 @@ fn file_output_format(path: &Path) -> Result<FileOutputFormat> {
 fn schema_rows(columns: &[ColumnInfo]) -> Vec<SchemaJsonRow> {
     columns
         .iter()
-        .map(|column| SchemaJsonRow {
-            name: column.name.clone(),
-            display_type: column.display_type(),
-            nullable: column.nullable,
-            physical_type: column.column_type.physical.to_string(),
-            logical_type: column
-                .column_type
-                .logical
-                .as_ref()
-                .map(|logical| logical.display_name()),
+        .map(|column| schema_row(None, column))
+        .collect()
+}
+
+fn schema_result_rows(results: &[SchemaResult]) -> Vec<SchemaJsonRow> {
+    results
+        .iter()
+        .flat_map(|result| {
+            result
+                .columns
+                .iter()
+                .map(|column| schema_row(Some(result.path.as_path()), column))
         })
         .collect()
 }
 
+fn schema_row(file: Option<&Path>, column: &ColumnInfo) -> SchemaJsonRow {
+    SchemaJsonRow {
+        file: file.map(|path| path.display().to_string()),
+        name: column.name.clone(),
+        display_type: column.display_type(),
+        nullable: column.nullable,
+        physical_type: column.column_type.physical.to_string(),
+        logical_type: column
+            .column_type
+            .logical
+            .as_ref()
+            .map(|logical| logical.display_name()),
+    }
+}
+
 fn stats_rows(rows: &[ColumnStats]) -> Vec<StatsJsonRow> {
-    rows.iter()
-        .map(|row| StatsJsonRow {
-            column: row.column.clone(),
-            display_type: row.display_type(),
-            null_count: row.null_count,
-            min: row
-                .min
-                .as_ref()
-                .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
-            max: row
-                .max
-                .as_ref()
-                .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
-            physical_type: row.column_type.physical.to_string(),
-            logical_type: row
-                .column_type
-                .logical
-                .as_ref()
-                .map(|logical| logical.display_name()),
+    rows.iter().map(|row| stats_row(None, row)).collect()
+}
+
+fn stats_result_rows(results: &[StatsResult]) -> Vec<StatsJsonRow> {
+    results
+        .iter()
+        .flat_map(|result| {
+            result
+                .rows
+                .iter()
+                .map(|row| stats_row(Some(result.path.as_path()), row))
         })
         .collect()
+}
+
+fn stats_row(file: Option<&Path>, row: &ColumnStats) -> StatsJsonRow {
+    StatsJsonRow {
+        file: file.map(|path| path.display().to_string()),
+        column: row.column.clone(),
+        display_type: row.display_type(),
+        null_count: row.null_count,
+        min: row
+            .min
+            .as_ref()
+            .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
+        max: row
+            .max
+            .as_ref()
+            .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
+        physical_type: row.column_type.physical.to_string(),
+        logical_type: row
+            .column_type
+            .logical
+            .as_ref()
+            .map(|logical| logical.display_name()),
+    }
 }
 
 fn file_info_rows(rows: &[FileInfo]) -> Vec<FileInfoJsonRow> {
