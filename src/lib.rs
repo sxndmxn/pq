@@ -1,4 +1,5 @@
 mod api;
+mod atomic_output;
 mod cli;
 mod commands;
 mod dataset;

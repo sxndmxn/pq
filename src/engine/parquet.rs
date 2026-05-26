@@ -163,7 +163,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
         }
     }
 
-    let pending_output = crate::output::PendingOutput::new(output)?;
+    let pending_output = crate::atomic_output::PendingOutput::new(output)?;
     let output_file =
         File::create(pending_output.path()).map_err(|error| PqError::write_error(output, error))?;
     let props = WriterProperties::builder()
