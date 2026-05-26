@@ -1,2 +1,2 @@
-pub mod parquet;
-pub mod stats;
+pub(crate) mod parquet;
+pub(crate) mod stats;

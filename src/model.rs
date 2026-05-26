@@ -1,3 +1,4 @@
+use arrow::array::RecordBatch;
 use parquet::basic::{
     Compression as ParquetCompression, ConvertedType as ParquetConvertedType,
     LogicalType as ParquetLogicalType, TimeUnit as ParquetTimeUnit, Type as ParquetPhysicalType,
@@ -5,6 +6,47 @@ use parquet::basic::{
 use parquet::schema::types::ColumnDescriptor;
 use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScanKind {
+    Head,
+    Tail,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScanOptions {
+    pub rows: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct SchemaResult {
+    pub path: PathBuf,
+    pub columns: Vec<ColumnInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScanResult {
+    pub path: PathBuf,
+    pub batches: Vec<RecordBatch>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CountEntry {
+    pub path: PathBuf,
+    pub rows: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CountResult {
+    pub entries: Vec<CountEntry>,
+    pub total_rows: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct StatsResult {
+    pub path: PathBuf,
+    pub rows: Vec<ColumnStats>,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ColumnInfo {

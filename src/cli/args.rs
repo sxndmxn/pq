@@ -1,4 +1,4 @@
-use crate::OutputFormat;
+use crate::output::OutputFormat;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -33,6 +33,26 @@ pub enum Command {
     Info(InfoArgs),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
+pub enum OutputFormatArg {
+    #[default]
+    Table,
+    Json,
+    Jsonl,
+    Csv,
+}
+
+impl From<OutputFormatArg> for OutputFormat {
+    fn from(value: OutputFormatArg) -> Self {
+        match value {
+            OutputFormatArg::Table => Self::Table,
+            OutputFormatArg::Json => Self::Json,
+            OutputFormatArg::Jsonl => Self::Jsonl,
+            OutputFormatArg::Csv => Self::Csv,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct SchemaArgs {
     /// Parquet file(s) to read
@@ -40,7 +60,7 @@ pub struct SchemaArgs {
     pub inputs: Vec<PathBuf>,
     /// Output format
     #[arg(short, long, default_value = "table")]
-    pub output: OutputFormat,
+    pub output: OutputFormatArg,
     /// Suppress headers and formatting
     #[arg(short, long)]
     pub quiet: bool,
@@ -56,7 +76,7 @@ pub struct HeadArgs {
     pub rows: usize,
     /// Output format
     #[arg(short, long, default_value = "table")]
-    pub output: OutputFormat,
+    pub output: OutputFormatArg,
     /// Suppress headers and formatting
     #[arg(short, long)]
     pub quiet: bool,
@@ -72,7 +92,7 @@ pub struct TailArgs {
     pub rows: usize,
     /// Output format
     #[arg(short, long, default_value = "table")]
-    pub output: OutputFormat,
+    pub output: OutputFormatArg,
     /// Suppress headers and formatting
     #[arg(short, long)]
     pub quiet: bool,
@@ -98,7 +118,7 @@ pub struct StatsArgs {
     pub column: Option<String>,
     /// Output format
     #[arg(short, long, default_value = "table")]
-    pub output: OutputFormat,
+    pub output: OutputFormatArg,
     /// Suppress headers and formatting
     #[arg(short, long)]
     pub quiet: bool,
@@ -131,7 +151,7 @@ pub struct InfoArgs {
     pub inputs: Vec<PathBuf>,
     /// Output format
     #[arg(short, long, default_value = "table")]
-    pub output: OutputFormat,
+    pub output: OutputFormatArg,
     /// Suppress headers and formatting
     #[arg(short, long)]
     pub quiet: bool,

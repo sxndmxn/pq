@@ -3,13 +3,13 @@ use crate::dataset::Dataset;
 use crate::Result;
 use std::path::Path;
 
-pub mod convert;
-pub mod count;
-pub mod info;
-pub mod merge;
-pub mod scan;
-pub mod schema;
-pub mod stats;
+mod convert;
+mod count;
+mod info;
+mod merge;
+mod scan;
+mod schema;
+mod stats;
 
 pub(crate) fn run(command: Command) -> Result<()> {
     match command {

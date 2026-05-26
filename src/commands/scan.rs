@@ -1,16 +1,16 @@
 //! Head and tail commands
 
-use crate::api::{self, ScanKind, ScanOptions};
+use crate::api;
 use crate::cli::args::{HeadArgs, TailArgs};
 use crate::dataset::Dataset;
-use crate::{commands, output, Result};
+use crate::{commands, output, Result, ScanKind, ScanOptions};
 
 pub fn run_head(args: HeadArgs) -> Result<()> {
     run_scan(
         args.inputs,
         ScanKind::Head,
         args.rows,
-        args.output,
+        args.output.into(),
         args.quiet,
     )
 }
@@ -20,7 +20,7 @@ pub fn run_tail(args: TailArgs) -> Result<()> {
         args.inputs,
         ScanKind::Tail,
         args.rows,
-        args.output,
+        args.output.into(),
         args.quiet,
     )
 }
@@ -29,7 +29,7 @@ fn run_scan(
     inputs: Vec<std::path::PathBuf>,
     kind: ScanKind,
     rows: usize,
-    output_format: crate::OutputFormat,
+    output_format: crate::output::OutputFormat,
     quiet: bool,
 ) -> Result<()> {
     let dataset = Dataset::from_inputs(inputs)?;
