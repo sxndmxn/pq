@@ -172,3 +172,48 @@ fn merge_comes_from_public_api() -> Result<()> {
     fs::remove_file(output)?;
     Ok(())
 }
+
+#[test]
+fn merge_schema_mismatch_does_not_truncate_existing_output() -> Result<()> {
+    let left_schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Int64,
+        false,
+    )]));
+    let right_schema = Arc::new(Schema::new(vec![Field::new(
+        "other",
+        DataType::Int64,
+        false,
+    )]));
+    let left_batch = RecordBatch::try_new(
+        Arc::clone(&left_schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let right_batch = RecordBatch::try_new(
+        Arc::clone(&right_schema),
+        vec![Arc::new(Int64Array::from(vec![2])) as ArrayRef],
+    )?;
+    let left = temp_path("mismatch_left", "parquet")?;
+    let right = temp_path("mismatch_right", "parquet")?;
+    let output = temp_path("mismatch_output", "parquet")?;
+
+    write_parquet(&left, left_schema, &[left_batch])?;
+    write_parquet(&right, right_schema, &[right_batch])?;
+    fs::write(&output, b"sentinel")?;
+
+    let dataset = pq::dataset_from_inputs(vec![left.clone(), right.clone()])?;
+    let Err(error) = pq::merge(&dataset, &output) else {
+        fs::remove_file(left)?;
+        fs::remove_file(right)?;
+        fs::remove_file(output)?;
+        return Err(anyhow::anyhow!("schema mismatch should fail"));
+    };
+
+    assert!(matches!(error, pq::PqError::SchemaMismatch { .. }));
+    assert_eq!(fs::read(&output)?, b"sentinel");
+
+    fs::remove_file(left)?;
+    fs::remove_file(right)?;
+    fs::remove_file(output)?;
+    Ok(())
+}

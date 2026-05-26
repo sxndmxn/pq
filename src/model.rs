@@ -113,7 +113,7 @@ pub struct ColumnType {
 }
 
 impl ColumnType {
-    pub fn from_parquet(column: &ColumnDescriptor) -> Self {
+    pub(crate) fn from_parquet(column: &ColumnDescriptor) -> Self {
         let logical = column
             .logical_type()
             .map(LogicalTypeKind::from_parquet)

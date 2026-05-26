@@ -10,6 +10,28 @@ pub struct Dataset {
     paths: Vec<PathBuf>,
 }
 
+#[derive(Clone, Debug)]
+pub struct InputFile {
+    path: PathBuf,
+}
+
+impl InputFile {
+    pub fn from_input(input: PathBuf) -> Result<Self> {
+        let paths = paths_from_input(&input)?;
+        match paths.as_slice() {
+            [path] => Ok(Self {
+                path: path.to_path_buf(),
+            }),
+            [] => Err(PqError::NoInputFiles),
+            _ => Err(PqError::TooManyInputFiles { count: paths.len() }),
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
 impl Dataset {
     pub fn from_inputs(inputs: Vec<PathBuf>) -> Result<Self> {
         if inputs.is_empty() {
@@ -22,7 +44,8 @@ impl Dataset {
 
         for input in inputs {
             if is_glob_pattern(&input) {
-                expand_glob_input(&input, &mut paths, &mut seen_paths, &mut seen_from_globs)?;
+                let matches = glob_matches(&input)?;
+                push_glob_matches(&matches, &mut paths, &mut seen_paths, &mut seen_from_globs);
             } else {
                 validate_file_path(&input)?;
                 if !seen_from_globs.contains(&input) {
@@ -48,12 +71,16 @@ impl Dataset {
     }
 }
 
-fn expand_glob_input(
-    input: &Path,
-    paths: &mut Vec<PathBuf>,
-    seen_paths: &mut BTreeSet<PathBuf>,
-    seen_from_globs: &mut BTreeSet<PathBuf>,
-) -> Result<()> {
+fn paths_from_input(input: &Path) -> Result<Vec<PathBuf>> {
+    if is_glob_pattern(input) {
+        glob_matches(input)
+    } else {
+        validate_file_path(input)?;
+        Ok(vec![input.to_path_buf()])
+    }
+}
+
+fn glob_matches(input: &Path) -> Result<Vec<PathBuf>> {
     let pattern = input.to_string_lossy().into_owned();
     let mut matches = Vec::new();
 
@@ -77,13 +104,21 @@ fn expand_glob_input(
     }
 
     matches.sort();
+    Ok(matches)
+}
+
+fn push_glob_matches(
+    matches: &[PathBuf],
+    paths: &mut Vec<PathBuf>,
+    seen_paths: &mut BTreeSet<PathBuf>,
+    seen_from_globs: &mut BTreeSet<PathBuf>,
+) {
     for path in matches {
         if seen_paths.insert(path.clone()) {
             seen_from_globs.insert(path.clone());
-            paths.push(path);
+            paths.push(path.clone());
         }
     }
-    Ok(())
 }
 
 fn is_glob_pattern(path: &Path) -> bool {
@@ -169,6 +204,27 @@ mod tests {
         assert_eq!(paths, vec![file.as_path(), file.as_path()]);
 
         fs::remove_file(file)?;
+        fs::remove_dir(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn input_file_rejects_multi_match_glob() -> Result<()> {
+        let dir = temp_dir()?;
+        let first = dir.join("a.parquet");
+        let second = dir.join("b.parquet");
+        fs::write(&first, b"PAR1")?;
+        fs::write(&second, b"PAR1")?;
+        let glob = dir.join("*.parquet");
+
+        let Err(error) = InputFile::from_input(glob) else {
+            return Err(PqError::output_error("multi-match glob should fail"));
+        };
+
+        assert!(matches!(error, PqError::TooManyInputFiles { count: 2 }));
+
+        fs::remove_file(first)?;
+        fs::remove_file(second)?;
         fs::remove_dir(dir)?;
         Ok(())
     }

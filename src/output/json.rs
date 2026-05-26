@@ -2,6 +2,7 @@
 
 use crate::Result;
 use arrow::array::RecordBatch;
+use arrow::error::ArrowError;
 use arrow::json::writer::{JsonArray, LineDelimited, Writer};
 use arrow::json::WriterBuilder;
 use serde::Serialize;
@@ -61,14 +62,12 @@ impl JsonBatchFileWriter {
         Ok(Self { writer })
     }
 
-    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
-        self.writer.write(batch)?;
-        Ok(())
+    pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {
+        self.writer.write(batch)
     }
 
-    pub fn finish(&mut self) -> Result<()> {
-        self.writer.finish()?;
-        Ok(())
+    pub fn finish(&mut self) -> std::result::Result<(), ArrowError> {
+        self.writer.finish()
     }
 }
 
@@ -85,13 +84,11 @@ impl JsonlBatchFileWriter {
         Ok(Self { writer })
     }
 
-    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
-        self.writer.write(batch)?;
-        Ok(())
+    pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {
+        self.writer.write(batch)
     }
 
-    pub fn finish(&mut self) -> Result<()> {
-        self.writer.finish()?;
-        Ok(())
+    pub fn finish(&mut self) -> std::result::Result<(), ArrowError> {
+        self.writer.finish()
     }
 }
