@@ -1,9 +1,9 @@
 //! Head and tail commands
 
-use crate::api::{self, ScanKind, ScanOptions};
+use crate::api;
 use crate::cli::args::{HeadArgs, TailArgs};
 use crate::dataset::Dataset;
-use crate::{commands, output, Result};
+use crate::{commands, output, Result, ScanKind, ScanOptions};
 
 pub fn run_head(args: HeadArgs) -> Result<()> {
     run_scan(

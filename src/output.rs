@@ -1,6 +1,5 @@
-use crate::api::CountResult;
 use crate::error::PqError;
-use crate::model::{ColumnInfo, ColumnStats, FileInfo, StatValue};
+use crate::model::{ColumnInfo, ColumnStats, CountResult, FileInfo, StatValue};
 use crate::Result;
 use arrow::array::RecordBatch;
 use serde::Serialize;

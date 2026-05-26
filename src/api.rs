@@ -1,50 +1,8 @@
 use crate::dataset::Dataset;
 use crate::engine;
-use crate::model::{ColumnInfo, ColumnStats, FileInfo};
+use crate::model::{CountResult, FileInfo, ScanKind, ScanOptions, ScanResult, SchemaResult, StatsResult};
 use crate::Result;
-use arrow::array::RecordBatch;
 use std::path::{Path, PathBuf};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScanKind {
-    Head,
-    Tail,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ScanOptions {
-    pub rows: usize,
-}
-
-#[derive(Clone, Debug)]
-pub struct SchemaResult {
-    pub path: PathBuf,
-    pub columns: Vec<ColumnInfo>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ScanResult {
-    pub path: PathBuf,
-    pub batches: Vec<RecordBatch>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CountEntry {
-    pub path: PathBuf,
-    pub rows: i64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CountResult {
-    pub entries: Vec<CountEntry>,
-    pub total_rows: i64,
-}
-
-#[derive(Clone, Debug)]
-pub struct StatsResult {
-    pub path: PathBuf,
-    pub rows: Vec<ColumnStats>,
-}
 
 pub fn dataset_from_inputs(inputs: Vec<PathBuf>) -> Result<Dataset> {
     Dataset::from_inputs(inputs)
