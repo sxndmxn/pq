@@ -68,7 +68,7 @@ pub struct FileInfo {
     pub num_rows: i64,
     pub num_columns: usize,
     pub num_row_groups: usize,
-    pub compression: Option<CompressionCodec>,
+    pub compression: CompressionSummary,
     pub created_by: Option<String>,
     pub version: i32,
 }
@@ -91,6 +91,18 @@ pub struct ColumnStats {
 impl ColumnStats {
     pub fn display_type(&self) -> String {
         self.column_type.display_name()
+    }
+
+    pub fn display_stat_value(&self, value: &StatValue) -> String {
+        match value {
+            StatValue::Binary(bytes) | StatValue::FixedLenBinary(bytes)
+                if self.column_type.logical == Some(LogicalTypeKind::String) =>
+            {
+                display_utf8_or_hex(bytes)
+            }
+            StatValue::Binary(bytes) | StatValue::FixedLenBinary(bytes) => display_hex(bytes),
+            _ => value.to_string(),
+        }
     }
 }
 
@@ -369,6 +381,23 @@ pub enum CompressionCodec {
     Lz4Raw,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompressionSummary {
+    Unknown,
+    Single(CompressionCodec),
+    Mixed,
+}
+
+impl fmt::Display for CompressionSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unknown => f.write_str("UNKNOWN"),
+            Self::Single(codec) => write!(f, "{codec}"),
+            Self::Mixed => f.write_str("MIXED"),
+        }
+    }
+}
+
 impl From<ParquetCompression> for CompressionCodec {
     fn from(value: ParquetCompression) -> Self {
         match value {
@@ -419,18 +448,20 @@ impl fmt::Display for StatValue {
             Self::Int64(value) => write!(f, "{value}"),
             Self::Float(value) => write!(f, "{value}"),
             Self::Double(value) => write!(f, "{value}"),
-            Self::Binary(value) | Self::FixedLenBinary(value) => {
-                f.write_str(&display_binary(value))
-            }
+            Self::Binary(value) | Self::FixedLenBinary(value) => f.write_str(&display_hex(value)),
             Self::Boolean(value) => write!(f, "{value}"),
             Self::Int96(value) => f.write_str(value),
         }
     }
 }
 
-fn display_binary(value: &[u8]) -> String {
+fn display_utf8_or_hex(value: &[u8]) -> String {
     match std::str::from_utf8(value) {
         Ok(text) => text.to_string(),
-        Err(_) => value.iter().map(|byte| format!("{byte:02x}")).collect(),
+        Err(_) => display_hex(value),
     }
+}
+
+fn display_hex(value: &[u8]) -> String {
+    value.iter().map(|byte| format!("{byte:02x}")).collect()
 }

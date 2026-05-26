@@ -1,5 +1,5 @@
 use crate::error::PqError;
-use crate::model::{ColumnInfo, ColumnStats, CountResult, FileInfo, StatValue};
+use crate::model::{ColumnInfo, ColumnStats, CountResult, FileInfo, LogicalTypeKind, StatValue};
 use crate::Result;
 use arrow::array::RecordBatch;
 use serde::Serialize;
@@ -61,7 +61,7 @@ struct FileInfoJsonRow {
     num_rows: i64,
     num_columns: usize,
     num_row_groups: usize,
-    compression: Option<String>,
+    compression: String,
     created_by: Option<String>,
     version: i32,
 }
@@ -104,9 +104,6 @@ pub fn write_file_infos(output: OutputFormat, quiet: bool, rows: &[FileInfo]) ->
                 if index > 0 {
                     writeln!(writer)?;
                 }
-                if rows.len() > 1 && !quiet {
-                    writeln!(writer, "==> {} <==", row.path().display())?;
-                }
                 info::write_table(&mut writer, std::slice::from_ref(row), quiet)?;
             }
         }
@@ -135,14 +132,48 @@ pub fn write_counts(quiet: bool, is_multi_source: bool, counts: &CountResult) ->
     Ok(())
 }
 
-pub fn write_batches_to_path(path: &Path, batches: &[RecordBatch]) -> Result<()> {
-    match file_output_format(path)? {
-        FileOutputFormat::Csv => csv::write_batches_to_file(batches, path)
-            .map_err(|error| PqError::write_error(path, error).into()),
-        FileOutputFormat::Json => json::write_batches_to_file(batches, path)
-            .map_err(|error| PqError::write_error(path, error).into()),
-        FileOutputFormat::Jsonl => json::write_batches_jsonl_to_file(batches, path)
-            .map_err(|error| PqError::write_error(path, error).into()),
+pub(crate) enum BatchFileWriter {
+    Csv(Box<csv::BatchFileWriter>),
+    Json(json::JsonBatchFileWriter),
+    Jsonl(json::JsonlBatchFileWriter),
+}
+
+impl BatchFileWriter {
+    pub fn create(path: &Path) -> Result<Self> {
+        let writer = match file_output_format(path)? {
+            FileOutputFormat::Csv => Self::Csv(Box::new(
+                csv::BatchFileWriter::create(path)
+                    .map_err(|error| PqError::write_error(path, error))?,
+            )),
+            FileOutputFormat::Json => Self::Json(
+                json::JsonBatchFileWriter::create(path)
+                    .map_err(|error| PqError::write_error(path, error))?,
+            ),
+            FileOutputFormat::Jsonl => Self::Jsonl(
+                json::JsonlBatchFileWriter::create(path)
+                    .map_err(|error| PqError::write_error(path, error))?,
+            ),
+        };
+        Ok(writer)
+    }
+
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        match self {
+            Self::Csv(writer) => writer.write(batch),
+            Self::Json(writer) => writer.write(batch),
+            Self::Jsonl(writer) => writer.write(batch),
+        }
+    }
+
+    pub fn finish(mut self) -> Result<()> {
+        match &mut self {
+            Self::Csv(writer) => {
+                writer.finish();
+                Ok(())
+            }
+            Self::Json(writer) => writer.finish(),
+            Self::Jsonl(writer) => writer.finish(),
+        }
     }
 }
 
@@ -159,13 +190,11 @@ fn file_output_format(path: &Path) -> Result<FileOutputFormat> {
         Some(format) => Err(PqError::UnsupportedFormat {
             format: format.to_string(),
             supported: "csv, json, jsonl".to_string(),
-        }
-        .into()),
+        }),
         None => Err(PqError::UnsupportedFormat {
             format: "(no extension)".to_string(),
             supported: "csv, json, jsonl".to_string(),
-        }
-        .into()),
+        }),
     }
 }
 
@@ -192,8 +221,14 @@ fn stats_rows(rows: &[ColumnStats]) -> Vec<StatsJsonRow> {
             column: row.column.clone(),
             display_type: row.display_type(),
             null_count: row.null_count,
-            min: row.min.as_ref().map(stat_value_json),
-            max: row.max.as_ref().map(stat_value_json),
+            min: row
+                .min
+                .as_ref()
+                .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
+            max: row
+                .max
+                .as_ref()
+                .map(|value| stat_value_json(value, row.column_type.logical.as_ref())),
             physical_type: row.column_type.physical.to_string(),
             logical_type: row
                 .column_type
@@ -212,25 +247,36 @@ fn file_info_rows(rows: &[FileInfo]) -> Vec<FileInfoJsonRow> {
             num_rows: row.num_rows,
             num_columns: row.num_columns,
             num_row_groups: row.num_row_groups,
-            compression: row.compression.map(|compression| compression.to_string()),
+            compression: row.compression.to_string(),
             created_by: row.created_by.clone(),
             version: row.version,
         })
         .collect()
 }
 
-fn stat_value_json(value: &StatValue) -> Value {
+fn stat_value_json(value: &StatValue, logical_type: Option<&LogicalTypeKind>) -> Value {
     match value {
         StatValue::Int32(inner) => Value::from(*inner),
         StatValue::Int64(inner) => Value::from(*inner),
         StatValue::Float(inner) => Value::from(*inner),
         StatValue::Double(inner) => Value::from(*inner),
         StatValue::Binary(inner) | StatValue::FixedLenBinary(inner) => {
-            Value::from(String::from_utf8_lossy(inner).to_string())
+            if logical_type == Some(&LogicalTypeKind::String) {
+                match std::str::from_utf8(inner) {
+                    Ok(value) => Value::from(value),
+                    Err(_) => Value::from(hex_string(inner)),
+                }
+            } else {
+                Value::from(hex_string(inner))
+            }
         }
         StatValue::Boolean(inner) => Value::from(*inner),
         StatValue::Int96(inner) => Value::from(inner.as_str()),
     }
+}
+
+fn hex_string(value: &[u8]) -> String {
+    value.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -249,7 +295,7 @@ mod tests {
     fn temp_path(extension: &str) -> Result<std::path::PathBuf> {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
+            .map_err(PqError::output_error)?
             .as_nanos();
         let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
         Ok(std::env::temp_dir().join(format!("pq_output_{unique}_{counter}.{extension}")))
@@ -273,7 +319,9 @@ mod tests {
         let path = temp_path("jsonl")?;
         let batch = sample_batch()?;
 
-        write_batches_to_path(&path, &[batch])?;
+        let mut writer = BatchFileWriter::create(&path)?;
+        writer.write(&batch)?;
+        writer.finish()?;
 
         let contents = fs::read_to_string(&path)?;
         assert!(contents.lines().all(|line| line.starts_with('{')));

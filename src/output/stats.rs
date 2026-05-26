@@ -21,12 +21,12 @@ pub fn write_table<W: Write>(
             Cell::new(
                 row.min
                     .as_ref()
-                    .map_or_else(|| "N/A".to_string(), ToString::to_string),
+                    .map_or_else(|| "N/A".to_string(), |value| row.display_stat_value(value)),
             ),
             Cell::new(
                 row.max
                     .as_ref()
-                    .map_or_else(|| "N/A".to_string(), ToString::to_string),
+                    .map_or_else(|| "N/A".to_string(), |value| row.display_stat_value(value)),
             ),
         ]);
     }
@@ -53,12 +53,12 @@ pub fn write_csv<W: Write>(
             escape_csv(
                 &row.min
                     .as_ref()
-                    .map_or_else(String::new, ToString::to_string)
+                    .map_or_else(String::new, |value| row.display_stat_value(value))
             ),
             escape_csv(
                 &row.max
                     .as_ref()
-                    .map_or_else(String::new, ToString::to_string)
+                    .map_or_else(String::new, |value| row.display_stat_value(value))
             ),
         )?;
     }

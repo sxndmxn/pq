@@ -41,7 +41,7 @@ $ pq schema data.parquet
 | Column | Type       | Nullable |
 +================================+
 | id     | INT64      | Yes      |
-| name   | BYTE_ARRAY | Yes      |
+| name   | STRING     | Yes      |
 | amount | DOUBLE     | Yes      |
 +--------+------------+----------+
 ```
@@ -128,8 +128,8 @@ $ pq schema data.parquet --output jsonl # One JSON object per schema column
 ```
 
 Schema and stats JSON output include display type plus explicit physical/logical type
-metadata, and stats JSON preserves numeric and boolean min/max values as native JSON
-types.
+metadata. Stats JSON preserves numeric and boolean min/max values as native JSON
+types, and renders physical binary values as deterministic hexadecimal strings.
 
 `count` prints plain text counts, `convert` writes the format implied by the output file extension, and `merge` writes a Parquet file.
 

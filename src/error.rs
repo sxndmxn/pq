@@ -1,8 +1,7 @@
 //! Custom error types with user-friendly messages
 
 use arrow::error::ArrowError;
-use parquet::errors::ParquetError;
-use std::error::Error;
+use std::io;
 use std::path::Path;
 use thiserror::Error;
 
@@ -27,6 +26,12 @@ pub enum PqError {
     #[error("Cannot write file: {path}\n  {details}")]
     WriteError { path: String, details: String },
 
+    #[error("Cannot write output\n  {details}")]
+    OutputError { details: String },
+
+    #[error("Invalid glob pattern: {pattern}\n  {details}")]
+    InvalidGlobPattern { pattern: String, details: String },
+
     #[error("No files matched pattern: {pattern}")]
     NoFilesMatched { pattern: String },
 
@@ -47,6 +52,12 @@ pub enum PqError {
 
     #[error("Path is a directory, not a file: {path}")]
     IsDirectory { path: String },
+
+    #[error("Column not found in {path}: {column}")]
+    ColumnNotFound { path: String, column: String },
+
+    #[error("Invalid Parquet metadata in {path}\n  {details}")]
+    InvalidMetadata { path: String, details: String },
 }
 
 impl PqError {
@@ -122,15 +133,57 @@ impl PqError {
         }
     }
 
+    /// Create an output error without file path context
+    pub fn output_error(err: impl std::fmt::Display) -> Self {
+        Self::OutputError {
+            details: err.to_string(),
+        }
+    }
+
+    pub fn invalid_glob_pattern(pattern: &str, err: impl std::fmt::Display) -> Self {
+        Self::InvalidGlobPattern {
+            pattern: pattern.to_string(),
+            details: err.to_string(),
+        }
+    }
+
+    pub fn column_not_found(path: &Path, column: &str) -> Self {
+        Self::ColumnNotFound {
+            path: path.display().to_string(),
+            column: column.to_string(),
+        }
+    }
+
+    pub fn invalid_metadata(path: &Path, err: impl std::fmt::Display) -> Self {
+        Self::InvalidMetadata {
+            path: path.display().to_string(),
+            details: err.to_string(),
+        }
+    }
+
     /// Create an "is directory" error
     pub fn is_directory(path: &Path) -> Self {
         Self::IsDirectory {
             path: path.display().to_string(),
         }
     }
+}
 
-    pub fn should_hide_cause(error: &(dyn Error + 'static)) -> bool {
-        error.is::<Self>() || error.is::<ArrowError>() || error.is::<ParquetError>()
+impl From<io::Error> for PqError {
+    fn from(error: io::Error) -> Self {
+        Self::output_error(error)
+    }
+}
+
+impl From<serde_json::Error> for PqError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::output_error(error)
+    }
+}
+
+impl From<ArrowError> for PqError {
+    fn from(error: ArrowError) -> Self {
+        Self::output_error(error)
     }
 }
 

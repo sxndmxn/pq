@@ -1,5 +1,5 @@
 use crate::error::{PqError, ResultExt};
-use crate::model::{ColumnInfo, ColumnType, FileInfo};
+use crate::model::{ColumnInfo, ColumnType, CompressionCodec, CompressionSummary, FileInfo};
 use crate::Result;
 use arrow::array::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -56,7 +56,7 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
         return Ok(Vec::new());
     }
 
-    let (row_groups, rows_to_skip) = tail_row_groups(&metadata, rows)?;
+    let (row_groups, rows_to_skip) = tail_row_groups(path, &metadata, rows)?;
     let reader = builder
         .with_row_groups(row_groups)
         .build()
@@ -84,7 +84,11 @@ pub fn read_tail(path: &Path, rows: usize) -> Result<Vec<RecordBatch>> {
 
 pub fn row_count(path: &Path) -> Result<i64> {
     let reader = serialized_reader(path)?;
-    Ok(reader.metadata().file_metadata().num_rows())
+    let rows = reader.metadata().file_metadata().num_rows();
+    if rows < 0 {
+        return Err(PqError::invalid_metadata(path, "negative row count"));
+    }
+    Ok(rows)
 }
 
 pub fn schema_columns(path: &Path) -> Result<Vec<ColumnInfo>> {
@@ -112,16 +116,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     let file_metadata = metadata.file_metadata();
     let num_row_groups = metadata.num_row_groups();
 
-    let compression = if num_row_groups > 0 {
-        let row_group = metadata.row_group(0);
-        if row_group.num_columns() > 0 {
-            Some(row_group.column(0).compression().into())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let compression = compression_summary(metadata);
 
     Ok(FileInfo {
         path: path.to_path_buf(),
@@ -135,30 +130,32 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     })
 }
 
-pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>> {
+pub fn for_each_batch(path: &Path, mut f: impl FnMut(&RecordBatch) -> Result<()>) -> Result<()> {
     let reader = reader_builder(path)?
         .build()
         .map_err(|error| PqError::from_read(path, error))?;
 
-    reader
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(|error| PqError::corrupted(path, &error).into())
+    for batch_result in reader {
+        let batch = batch_result.map_err(|error| PqError::corrupted(path, &error))?;
+        f(&batch)?;
+    }
+
+    Ok(())
 }
 
 pub fn reader_builder(path: &Path) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).with_path_context(path)?;
-    Ok(ParquetRecordBatchReaderBuilder::try_new(file)
-        .map_err(|error| PqError::from_read(path, error))?)
+    ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| PqError::from_read(path, error))
 }
 
 pub fn serialized_reader(path: &Path) -> Result<SerializedFileReader<File>> {
     let file = File::open(path).with_path_context(path)?;
-    Ok(SerializedFileReader::new(file).map_err(|error| PqError::from_read(path, error))?)
+    SerializedFileReader::new(file).map_err(|error| PqError::from_read(path, error))
 }
 
 pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     if paths.is_empty() {
-        return Err(PqError::NoInputFiles.into());
+        return Err(PqError::NoInputFiles);
     }
 
     let first_builder = reader_builder(paths[0])?;
@@ -179,8 +176,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
                 file1: paths[0].display().to_string(),
                 file2: path.display().to_string(),
                 details: "Column names or types differ".to_string(),
-            }
-            .into());
+            });
         }
 
         let reader = builder
@@ -202,6 +198,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
 }
 
 fn tail_row_groups(
+    path: &Path,
     metadata: &parquet::file::metadata::ParquetMetaData,
     rows: usize,
 ) -> Result<(Vec<usize>, usize)> {
@@ -211,10 +208,13 @@ fn tail_row_groups(
     for row_group_index in (0..metadata.num_row_groups()).rev() {
         let row_group = metadata.row_group(row_group_index);
         let row_group_rows = usize::try_from(row_group.num_rows()).map_err(|_| {
-            anyhow::anyhow!(
-                "row group {} in {} cannot be represented on this platform",
-                row_group_index,
-                metadata.file_metadata().schema_descr().root_schema().name()
+            PqError::invalid_metadata(
+                path,
+                format!(
+                    "row group {} in {} cannot be represented on this platform",
+                    row_group_index,
+                    metadata.file_metadata().schema_descr().root_schema().name()
+                ),
             )
         })?;
 
@@ -227,4 +227,22 @@ fn tail_row_groups(
 
     selected_groups.reverse();
     Ok((selected_groups, selected_rows.saturating_sub(rows)))
+}
+
+fn compression_summary(metadata: &parquet::file::metadata::ParquetMetaData) -> CompressionSummary {
+    let mut compression = None;
+
+    for row_group_index in 0..metadata.num_row_groups() {
+        let row_group = metadata.row_group(row_group_index);
+        for column_index in 0..row_group.num_columns() {
+            let codec = CompressionCodec::from(row_group.column(column_index).compression());
+            match compression {
+                None => compression = Some(codec),
+                Some(existing) if existing == codec => {}
+                Some(_) => return CompressionSummary::Mixed,
+            }
+        }
+    }
+
+    compression.map_or(CompressionSummary::Unknown, CompressionSummary::Single)
 }
