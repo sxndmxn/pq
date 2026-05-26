@@ -76,14 +76,16 @@ pub fn convert(input: &Path, output: &Path) -> Result<()> {
     let reader = builder
         .build()
         .map_err(|error| crate::PqError::from_read(input, error))?;
-    let mut writer = crate::output::BatchFileWriter::create(output)?;
+    let pending_output = crate::output::PendingOutput::new(output)?;
+    let mut writer = crate::output::BatchFileWriter::create(pending_output.path())?;
 
     for batch_result in reader {
         let batch = batch_result.map_err(|error| crate::PqError::corrupted(input, &error))?;
         writer.write(&batch)?;
     }
 
-    writer.finish()
+    writer.finish()?;
+    pending_output.commit()
 }
 
 pub fn merge(dataset: &Dataset, output: &Path) -> Result<()> {

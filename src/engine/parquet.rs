@@ -163,7 +163,9 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
         }
     }
 
-    let output_file = File::create(output).map_err(|error| PqError::write_error(output, error))?;
+    let pending_output = crate::output::PendingOutput::new(output)?;
+    let output_file =
+        File::create(pending_output.path()).map_err(|error| PqError::write_error(output, error))?;
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
         .build();
@@ -187,7 +189,7 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     writer
         .close()
         .map_err(|error| PqError::write_error(output, error))?;
-    Ok(())
+    pending_output.commit()
 }
 
 fn tail_row_groups(
