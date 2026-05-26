@@ -19,24 +19,12 @@ impl PendingOutput {
         })?;
         let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
         let counter = TEMP_OUTPUT_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let extension = target_path
-            .extension()
-            .and_then(|extension| extension.to_str());
-        let temp_file_name = match extension {
-            Some(extension) => format!(
-                ".{}.tmp.{}.{}.{}",
-                file_name.to_string_lossy(),
-                std::process::id(),
-                counter,
-                extension
-            ),
-            None => format!(
-                ".{}.tmp.{}.{}",
-                file_name.to_string_lossy(),
-                std::process::id(),
-                counter
-            ),
-        };
+        let temp_file_name = format!(
+            ".{}.tmp.{}.{}",
+            file_name.to_string_lossy(),
+            std::process::id(),
+            counter
+        );
 
         Ok(Self {
             target_path: target_path.to_path_buf(),
@@ -121,6 +109,20 @@ mod tests {
 
         assert!(!temp_path.exists());
         assert!(!target_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn pending_output_temp_path_does_not_preserve_target_extension() -> Result<()> {
+        let target_path = temp_path("jsonl")?;
+        let pending_output = PendingOutput::new(&target_path)?;
+        let temp_file_name = pending_output
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| PqError::output_error("temp path should have a file name"))?;
+
+        assert!(!temp_file_name.ends_with(".jsonl"));
         Ok(())
     }
 }
