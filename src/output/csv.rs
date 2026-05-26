@@ -3,6 +3,7 @@
 use crate::Result;
 use arrow::array::RecordBatch;
 use arrow::csv::{Writer, WriterBuilder};
+use arrow::error::ArrowError;
 use std::fs::File;
 use std::io::Write;
 
@@ -38,9 +39,8 @@ impl BatchFileWriter {
         })
     }
 
-    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
-        self.writer.write(batch)?;
-        Ok(())
+    pub fn write(&mut self, batch: &RecordBatch) -> std::result::Result<(), ArrowError> {
+        self.writer.write(batch)
     }
 
     pub fn finish(&mut self) {}

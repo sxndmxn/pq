@@ -330,6 +330,51 @@ fn test_convert_json_preserves_types() -> Result<()> {
 }
 
 #[test]
+fn test_convert_rejects_multi_match_glob() -> Result<()> {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "value",
+        DataType::Int64,
+        false,
+    )]));
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1])) as ArrayRef],
+    )?;
+    let first = temp_path("convert_glob_pair", "parquet")?;
+    let stem = first
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| anyhow::anyhow!("temp path should have utf-8 stem"))?;
+    let second = first.with_file_name(format!("{stem}_second.parquet"));
+    let output_path = temp_path("convert_glob_output", "csv")?;
+    write_parquet(
+        &first,
+        Arc::clone(&schema),
+        std::slice::from_ref(&batch),
+        None,
+    )?;
+    write_parquet(&second, schema, &[batch], None)?;
+    let glob = first.with_file_name(format!("{stem}*.parquet"));
+
+    let output = pq()
+        .args([
+            "convert",
+            &glob.display().to_string(),
+            &output_path.display().to_string(),
+        ])
+        .output()?;
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Expected exactly one input file"));
+    assert!(!output_path.exists());
+
+    fs::remove_file(first)?;
+    fs::remove_file(second)?;
+    Ok(())
+}
+
+#[test]
 fn test_stats_aggregates_across_row_groups() -> Result<()> {
     let schema = Arc::new(Schema::new(vec![Field::new(
         "value",

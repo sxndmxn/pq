@@ -11,6 +11,9 @@ pub enum PqError {
     #[error("No input files specified")]
     NoInputFiles,
 
+    #[error("Expected exactly one input file, got {count}")]
+    TooManyInputFiles { count: usize },
+
     #[error("File not found: {path}")]
     FileNotFound { path: String },
 

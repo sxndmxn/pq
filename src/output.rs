@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::io;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod csv;
 mod csv_support;
@@ -132,7 +132,12 @@ pub fn write_counts(quiet: bool, is_multi_source: bool, counts: &CountResult) ->
     Ok(())
 }
 
-pub(crate) enum BatchFileWriter {
+pub(crate) struct BatchFileWriter {
+    path: PathBuf,
+    inner: BatchFileWriterKind,
+}
+
+enum BatchFileWriterKind {
     Csv(Box<csv::BatchFileWriter>),
     Json(json::JsonBatchFileWriter),
     Jsonl(json::JsonlBatchFileWriter),
@@ -140,40 +145,45 @@ pub(crate) enum BatchFileWriter {
 
 impl BatchFileWriter {
     pub fn create(path: &Path) -> Result<Self> {
-        let writer = match file_output_format(path)? {
-            FileOutputFormat::Csv => Self::Csv(Box::new(
+        let inner = match file_output_format(path)? {
+            FileOutputFormat::Csv => BatchFileWriterKind::Csv(Box::new(
                 csv::BatchFileWriter::create(path)
                     .map_err(|error| PqError::write_error(path, error))?,
             )),
-            FileOutputFormat::Json => Self::Json(
+            FileOutputFormat::Json => BatchFileWriterKind::Json(
                 json::JsonBatchFileWriter::create(path)
                     .map_err(|error| PqError::write_error(path, error))?,
             ),
-            FileOutputFormat::Jsonl => Self::Jsonl(
+            FileOutputFormat::Jsonl => BatchFileWriterKind::Jsonl(
                 json::JsonlBatchFileWriter::create(path)
                     .map_err(|error| PqError::write_error(path, error))?,
             ),
         };
-        Ok(writer)
+        Ok(Self {
+            path: path.to_path_buf(),
+            inner,
+        })
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
-        match self {
-            Self::Csv(writer) => writer.write(batch),
-            Self::Json(writer) => writer.write(batch),
-            Self::Jsonl(writer) => writer.write(batch),
+        match &mut self.inner {
+            BatchFileWriterKind::Csv(writer) => writer.write(batch),
+            BatchFileWriterKind::Json(writer) => writer.write(batch),
+            BatchFileWriterKind::Jsonl(writer) => writer.write(batch),
         }
+        .map_err(|error| PqError::write_error(&self.path, error))
     }
 
     pub fn finish(mut self) -> Result<()> {
-        match &mut self {
-            Self::Csv(writer) => {
+        match &mut self.inner {
+            BatchFileWriterKind::Csv(writer) => {
                 writer.finish();
                 Ok(())
             }
-            Self::Json(writer) => writer.finish(),
-            Self::Jsonl(writer) => writer.finish(),
+            BatchFileWriterKind::Json(writer) => writer.finish(),
+            BatchFileWriterKind::Jsonl(writer) => writer.finish(),
         }
+        .map_err(|error| PqError::write_error(&self.path, error))
     }
 }
 

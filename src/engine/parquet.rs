@@ -114,6 +114,10 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     let reader = serialized_reader(path)?;
     let metadata = reader.metadata();
     let file_metadata = metadata.file_metadata();
+    let num_rows = file_metadata.num_rows();
+    if num_rows < 0 {
+        return Err(PqError::invalid_metadata(path, "negative row count"));
+    }
     let num_row_groups = metadata.num_row_groups();
 
     let compression = compression_summary(metadata);
@@ -121,7 +125,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     Ok(FileInfo {
         path: path.to_path_buf(),
         file_size_bytes: file_size(path)?,
-        num_rows: file_metadata.num_rows(),
+        num_rows,
         num_columns: file_metadata.schema_descr().num_columns(),
         num_row_groups,
         compression,
@@ -161,6 +165,17 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
     let first_builder = reader_builder(paths[0])?;
     let schema = Arc::clone(first_builder.schema());
 
+    for path in paths.iter().skip(1) {
+        let builder = reader_builder(path)?;
+        if builder.schema().as_ref() != schema.as_ref() {
+            return Err(PqError::SchemaMismatch {
+                file1: paths[0].display().to_string(),
+                file2: path.display().to_string(),
+                details: "Column names or types differ".to_string(),
+            });
+        }
+    }
+
     let output_file = File::create(output).map_err(|error| PqError::write_error(output, error))?;
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
@@ -170,15 +185,6 @@ pub fn merge_files(paths: &[&Path], output: &Path) -> Result<()> {
 
     for path in paths {
         let builder = reader_builder(path)?;
-
-        if builder.schema().as_ref() != schema.as_ref() {
-            return Err(PqError::SchemaMismatch {
-                file1: paths[0].display().to_string(),
-                file2: path.display().to_string(),
-                details: "Column names or types differ".to_string(),
-            });
-        }
-
         let reader = builder
             .build()
             .map_err(|error| PqError::from_read(path, error))?;
