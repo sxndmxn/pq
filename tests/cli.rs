@@ -296,6 +296,23 @@ fn test_info() -> Result<()> {
 }
 
 #[test]
+fn test_info_multi_file_json_is_parseable() -> Result<()> {
+    let file = fixture_path();
+    let output = pq().args(["info", &file, &file, "-o", "json"]).output()?;
+    assert!(output.status.success());
+    assert_no_source_headers(&output.stdout);
+
+    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("info json output should be an array"))?;
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["file"], serde_json::json!(file));
+    assert_eq!(rows[1]["file"], serde_json::json!(file));
+    Ok(())
+}
+
+#[test]
 fn test_convert_csv() -> Result<()> {
     let temp_dir = std::env::temp_dir();
     let output_path = temp_dir.join("pq_test_output.csv");

@@ -207,20 +207,23 @@ fn write_stats_result(
     Ok(())
 }
 
-pub fn write_file_infos(output: OutputFormat, quiet: bool, rows: &[FileInfo]) -> Result<()> {
+pub fn write_file_info(quiet: bool, row: &FileInfo) -> Result<()> {
+    info::write_table(io::stdout().lock(), std::slice::from_ref(row), quiet)
+}
+
+pub fn write_file_infos(
+    output: StructuredOutputFormat,
+    quiet: bool,
+    rows: &[FileInfo],
+) -> Result<()> {
     match output {
-        OutputFormat::Table => {
-            let mut writer = io::stdout().lock();
-            for (index, row) in rows.iter().enumerate() {
-                if index > 0 {
-                    writeln!(writer)?;
-                }
-                info::write_table(&mut writer, std::slice::from_ref(row), quiet)?;
-            }
+        StructuredOutputFormat::Json => {
+            json::write_value(io::stdout().lock(), &file_info_rows(rows))?
         }
-        OutputFormat::Json => json::write_value(io::stdout().lock(), &file_info_rows(rows))?,
-        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &file_info_rows(rows))?,
-        OutputFormat::Csv => info::write_csv(io::stdout().lock(), rows, !quiet)?,
+        StructuredOutputFormat::Jsonl => {
+            json::write_json_lines(io::stdout().lock(), &file_info_rows(rows))?;
+        }
+        StructuredOutputFormat::Csv => info::write_csv(io::stdout().lock(), rows, !quiet)?,
     }
     Ok(())
 }
