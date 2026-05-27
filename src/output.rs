@@ -29,10 +29,6 @@ pub(crate) enum OutputFormat {
 }
 
 impl OutputFormat {
-    pub fn is_table(self) -> bool {
-        self == Self::Table
-    }
-
     pub fn structured(self) -> Option<StructuredOutputFormat> {
         match self {
             Self::Table => None,
@@ -95,12 +91,20 @@ struct FileInfoJsonRow {
     version: i32,
 }
 
-pub fn write_batches(output: OutputFormat, quiet: bool, batches: &[RecordBatch]) -> Result<()> {
+pub fn write_table_batches(quiet: bool, batches: &[RecordBatch]) -> Result<()> {
+    table::write_batches(io::stdout().lock(), batches, quiet)?;
+    Ok(())
+}
+
+pub fn write_structured_batches(
+    output: StructuredOutputFormat,
+    quiet: bool,
+    batches: &[RecordBatch],
+) -> Result<()> {
     match output {
-        OutputFormat::Table => table::write_batches(io::stdout().lock(), batches, quiet)?,
-        OutputFormat::Json => json::write_json(io::stdout().lock(), batches)?,
-        OutputFormat::Jsonl => json::write_jsonl(io::stdout().lock(), batches)?,
-        OutputFormat::Csv => csv::write_batches(io::stdout().lock(), batches, !quiet)?,
+        StructuredOutputFormat::Json => json::write_json(io::stdout().lock(), batches)?,
+        StructuredOutputFormat::Jsonl => json::write_jsonl(io::stdout().lock(), batches)?,
+        StructuredOutputFormat::Csv => csv::write_batches(io::stdout().lock(), batches, !quiet)?,
     }
     Ok(())
 }
