@@ -148,6 +148,10 @@ $ pq schema *.parquet
 - Glob pattern support
 - Snappy compression for merge output
 
+## Development
+
+- [Core contracts](docs/core-contracts.md) captures the foundation invariants for input handling, output rendering, safe writes, and error behavior.
+
 ## License
 
 MIT
