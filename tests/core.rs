@@ -26,6 +26,17 @@ fn temp_path(name: &str, extension: &str) -> Result<std::path::PathBuf> {
     Ok(std::env::temp_dir().join(format!("pq_{name}_{unique}_{counter}.{extension}")))
 }
 
+fn temp_dir(name: &str) -> Result<std::path::PathBuf> {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| anyhow::anyhow!("system clock error: {error}"))?
+        .as_nanos();
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("pq_{name}_{unique}_{counter}"));
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 fn write_parquet(
     path: &std::path::Path,
     schema: Arc<Schema>,
@@ -37,6 +48,35 @@ fn write_parquet(
         writer.write(batch)?;
     }
     writer.close()?;
+    Ok(())
+}
+
+#[test]
+fn empty_dataset_input_is_typed_error() -> Result<()> {
+    let Err(error) = pq::dataset_from_inputs(Vec::new()) else {
+        return Err(anyhow::anyhow!("empty dataset input should fail"));
+    };
+
+    assert!(matches!(error, pq::PqError::NoInputFiles));
+    Ok(())
+}
+
+#[test]
+fn dataset_glob_expansion_is_sorted() -> Result<()> {
+    let dir = temp_dir("dataset_glob_order")?;
+    let first = dir.join("a.parquet");
+    let second = dir.join("b.parquet");
+    fs::write(&second, b"PAR1")?;
+    fs::write(&first, b"PAR1")?;
+
+    let dataset = pq::dataset_from_inputs(vec![dir.join("*.parquet")])?;
+    let paths = dataset.paths().collect::<Vec<_>>();
+
+    assert_eq!(paths, vec![first.as_path(), second.as_path()]);
+
+    fs::remove_file(first)?;
+    fs::remove_file(second)?;
+    fs::remove_dir(dir)?;
     Ok(())
 }
 
