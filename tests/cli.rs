@@ -495,6 +495,15 @@ fn test_convert_json_preserves_types() -> Result<()> {
 
 #[test]
 fn test_head_multi_file_json_rejects_incompatible_schemas() -> Result<()> {
+    assert_scan_multi_file_json_rejects_incompatible_schemas("head")
+}
+
+#[test]
+fn test_tail_multi_file_json_rejects_incompatible_schemas() -> Result<()> {
+    assert_scan_multi_file_json_rejects_incompatible_schemas("tail")
+}
+
+fn assert_scan_multi_file_json_rejects_incompatible_schemas(command: &str) -> Result<()> {
     let left_schema = Arc::new(Schema::new(vec![Field::new(
         "value",
         DataType::Int64,
@@ -520,7 +529,7 @@ fn test_head_multi_file_json_rejects_incompatible_schemas() -> Result<()> {
 
     let output = pq()
         .args([
-            "head",
+            command,
             &left.display().to_string(),
             &right.display().to_string(),
             "-o",

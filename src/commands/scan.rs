@@ -37,18 +37,18 @@ fn run_scan(
     let dataset = Dataset::from_inputs(inputs)?;
     let results = api::scan(&dataset, kind, ScanOptions { rows })?;
 
-    if output_format.is_table() {
-        for result in results {
-            commands::print_source_header(&dataset, &result.path, quiet);
-            output::write_batches(output_format, quiet, &result.batches)?;
-        }
-    } else {
+    if let Some(structured_output) = output_format.structured() {
         validate_compatible_schemas(&results)?;
         let batches = results
             .into_iter()
             .flat_map(|result| result.batches)
             .collect::<Vec<_>>();
-        output::write_batches(output_format, quiet, &batches)?;
+        output::write_structured_batches(structured_output, quiet, &batches)?;
+    } else {
+        for result in results {
+            commands::print_source_header(&dataset, &result.path, quiet);
+            output::write_table_batches(quiet, &result.batches)?;
+        }
     }
 
     Ok(())
