@@ -382,6 +382,28 @@ fn test_convert_invalid_input_preserves_existing_output() -> Result<()> {
 }
 
 #[test]
+fn test_convert_unsupported_format_preserves_existing_output() -> Result<()> {
+    let output_path = temp_path("unsupported_convert_output", "unsupported")?;
+    fs::write(&output_path, b"sentinel")?;
+
+    let output = pq()
+        .args([
+            "convert",
+            &fixture_path(),
+            &output_path.display().to_string(),
+        ])
+        .output()?;
+
+    assert!(!output.status.success());
+    assert_eq!(fs::read(&output_path)?, b"sentinel");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Unsupported format"));
+
+    fs::remove_file(output_path)?;
+    Ok(())
+}
+
+#[test]
 fn test_merge() -> Result<()> {
     let temp_dir = std::env::temp_dir();
     let output_path = temp_dir.join("pq_test_merged.parquet");
