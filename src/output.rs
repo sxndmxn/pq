@@ -109,13 +109,8 @@ pub fn write_structured_batches(
     Ok(())
 }
 
-pub fn write_schema(output: OutputFormat, quiet: bool, columns: &[ColumnInfo]) -> Result<()> {
-    match output {
-        OutputFormat::Table => table::write_schema_table(io::stdout().lock(), columns, quiet)?,
-        OutputFormat::Json => json::write_value(io::stdout().lock(), &schema_rows(columns))?,
-        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &schema_rows(columns))?,
-        OutputFormat::Csv => schema::write_csv(io::stdout().lock(), columns, !quiet)?,
-    }
+pub fn write_schema_table(quiet: bool, columns: &[ColumnInfo]) -> Result<()> {
+    table::write_schema_table(io::stdout().lock(), columns, quiet)?;
     Ok(())
 }
 
@@ -161,13 +156,8 @@ fn write_schema_result(
     Ok(())
 }
 
-pub fn write_stats(output: OutputFormat, quiet: bool, rows: &[ColumnStats]) -> Result<()> {
-    match output {
-        OutputFormat::Table => stats::write_table(io::stdout().lock(), rows, quiet)?,
-        OutputFormat::Json => json::write_value(io::stdout().lock(), &stats_rows(rows))?,
-        OutputFormat::Jsonl => json::write_json_lines(io::stdout().lock(), &stats_rows(rows))?,
-        OutputFormat::Csv => stats::write_csv(io::stdout().lock(), rows, !quiet)?,
-    }
+pub fn write_stats_table(quiet: bool, rows: &[ColumnStats]) -> Result<()> {
+    stats::write_table(io::stdout().lock(), rows, quiet)?;
     Ok(())
 }
 

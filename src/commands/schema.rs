@@ -20,7 +20,7 @@ pub fn run(args: SchemaArgs) -> Result<()> {
     } else {
         for result in results {
             commands::print_source_header(&dataset, &result.path, quiet);
-            output::write_schema(output_format, quiet, &result.columns)?;
+            output::write_schema_table(quiet, &result.columns)?;
         }
     }
 
