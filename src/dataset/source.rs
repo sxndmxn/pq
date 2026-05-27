@@ -11,12 +11,12 @@ pub struct Dataset {
 }
 
 #[derive(Clone, Debug)]
-pub struct InputFile {
+pub(crate) struct InputFile {
     path: PathBuf,
 }
 
 impl InputFile {
-    pub fn from_input(input: PathBuf) -> Result<Self> {
+    pub(crate) fn from_input(input: PathBuf) -> Result<Self> {
         let paths = paths_from_input(&input)?;
         match paths.as_slice() {
             [path] => Ok(Self {
@@ -27,7 +27,7 @@ impl InputFile {
         }
     }
 
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 }
