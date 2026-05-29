@@ -81,6 +81,55 @@ fn dataset_glob_expansion_is_sorted() -> Result<()> {
 }
 
 #[test]
+fn repeated_explicit_dataset_inputs_are_preserved() -> Result<()> {
+    let dir = temp_dir("dataset_explicit_repeats")?;
+    let file = dir.join("sample.parquet");
+    fs::write(&file, b"PAR1")?;
+
+    let dataset = pq::dataset_from_inputs(vec![file.clone(), file.clone()])?;
+    let paths = dataset.paths().collect::<Vec<_>>();
+
+    assert_eq!(paths, vec![file.as_path(), file.as_path()]);
+
+    fs::remove_file(file)?;
+    fs::remove_dir(dir)?;
+    Ok(())
+}
+
+#[test]
+fn dataset_glob_matches_are_deduplicated_against_explicit_inputs() -> Result<()> {
+    let dir = temp_dir("dataset_glob_dedup")?;
+    let file = dir.join("sample.parquet");
+    fs::write(&file, b"PAR1")?;
+    let glob = dir.join("*.parquet");
+
+    let dataset = pq::dataset_from_inputs(vec![file.clone(), glob])?;
+    let paths = dataset.paths().collect::<Vec<_>>();
+
+    assert_eq!(paths, vec![file.as_path()]);
+
+    fs::remove_file(file)?;
+    fs::remove_dir(dir)?;
+    Ok(())
+}
+
+#[test]
+fn dataset_glob_without_matches_is_typed_error() -> Result<()> {
+    let dir = temp_dir("dataset_empty_glob")?;
+    let glob = dir.join("*.parquet");
+
+    let Err(error) = pq::dataset_from_inputs(vec![glob]) else {
+        fs::remove_dir(dir)?;
+        return Err(anyhow::anyhow!("empty glob should fail"));
+    };
+
+    assert!(matches!(error, pq::PqError::NoFilesMatched { .. }));
+
+    fs::remove_dir(dir)?;
+    Ok(())
+}
+
+#[test]
 fn file_info_comes_from_public_api() -> Result<()> {
     let dataset = pq::dataset_from_inputs(vec![fixture_path()])?;
     let infos = pq::info(&dataset)?;
