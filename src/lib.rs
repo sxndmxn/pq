@@ -20,6 +20,7 @@ pub use model::{
 
 pub type Result<T> = std::result::Result<T, PqError>;
 
+#[doc(hidden)]
 pub fn run_cli() -> Result<()> {
     let cli = cli::args::Cli::parse();
     run(cli.command)
