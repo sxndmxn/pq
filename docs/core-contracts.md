@@ -12,6 +12,7 @@ Until the core is stable, changes should harden existing behavior instead of add
 
 - `Dataset` is the public input collection type.
 - Public library functions return typed results from `src/model.rs`; they should not print, parse CLI arguments, or depend on command modules.
+- The hidden `run_cli` entry point exists only to wire the package binary to crate-private CLI modules; it is not part of the stable library core.
 - CLI-only helpers stay crate-private. For example, single-input command plumbing belongs behind `InputFile`, not in the public library API.
 - `convert` is currently CLI plumbing, not a public library API. Expose conversion publicly only after its typed API and output contract are deliberately designed.
 
